@@ -9,7 +9,12 @@ from typing import Dict, List, Optional, Set, Any
 from app.services.sheets import SheetsService
 from app.services.statistics import StatisticsService
 from app.services.members import MembersService
-from app.utils.datetime import get_today_str, format_date_id, get_now
+from app.utils.datetime import (
+    get_today_str,
+    format_date_id,
+    get_now,
+    get_date_range_presets,
+)
 from app.config import Config
 
 logger = logging.getLogger(__name__)
@@ -195,12 +200,17 @@ class MappingService:
         }
 
     async def get_binaan_detail(
-        self, mutarabbi_id: str, tz_name: str = Config.TIMEZONE
+        self,
+        mutarabbi_id: str,
+        period_key: str = "weekly",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        period_label: Optional[str] = None,
+        tz_name: str = Config.TIMEZONE,
     ) -> Dict[str, Any]:
         """
-        Get detailed mutabaah report for a specific mutarabbi:
-        - Today's filled habits
-        - Monthly achievement & missing dates
+        Get detailed mutabaah report for a specific mutarabbi over a period
+        (defaults to 'weekly' for liqo evaluation, supports 'monthly' or 'custom').
         """
         mid_str = str(mutarabbi_id).strip()
         meta = self.get_mutarabbi_meta(mid_str) or {
@@ -212,6 +222,16 @@ class MappingService:
         today_str = get_today_str(tz_name)
         today_formatted = format_date_id(date_str=today_str, tz_name=tz_name)
 
+        # Resolve period dates if not explicitly provided
+        presets = get_date_range_presets(tz_name)
+        if not start_date or not end_date:
+            preset = presets.get(period_key, presets["weekly"])
+            start_date = preset["start_date"]
+            end_date = preset["end_date"]
+            period_label = period_label or preset["label"]
+        else:
+            period_label = period_label or f"{start_date} s/d {end_date}"
+
         # Today's submission
         today_record = None
         try:
@@ -219,13 +239,20 @@ class MappingService:
         except Exception as e:
             logger.error("Error fetching today mutabaah for %s: %s", mid_str, e)
 
-        # Monthly progress
+        # Period progress (weekly, monthly, or custom)
         stats_service = StatisticsService(self.sheets)
-        month_progress = {}
+        period_progress = {}
         try:
-            month_progress = await stats_service.calculate_user_month_progress(int(mid_str), tz_name)
+            period_progress = await stats_service.calculate_user_period_progress(
+                user_id=int(mid_str),
+                start_date=start_date,
+                end_date=end_date,
+                period_label=period_label,
+                period_key=period_key,
+                tz_name=tz_name,
+            )
         except Exception as e:
-            logger.error("Error calculating month progress for %s: %s", mid_str, e)
+            logger.error("Error calculating period progress for %s: %s", mid_str, e)
 
         # Member details (e.g. username)
         members_service = MembersService(self.sheets)
@@ -239,5 +266,10 @@ class MappingService:
             "today_formatted": today_formatted,
             "is_submitted_today": bool(today_record),
             "today_record": today_record,
-            "month_progress": month_progress,
+            "period_key": period_key,
+            "period_label": period_label,
+            "start_date": start_date,
+            "end_date": end_date,
+            "period_progress": period_progress,
+            "month_progress": period_progress,  # backwards compatibility
         }

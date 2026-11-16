@@ -466,13 +466,28 @@ def get_binaan_list_keyboard(binaan_list: List[Dict[str, Any]]) -> InlineKeyboar
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_binaan_detail_keyboard(mutarabbi_id: str) -> InlineKeyboardMarkup:
-    """Keyboard for inspecting single binaan mutabaah."""
+def get_binaan_detail_keyboard(
+    mutarabbi_id: str, current_period_key: str = "weekly"
+) -> InlineKeyboardMarkup:
+    """Keyboard for inspecting single binaan mutabaah with period filter tabs."""
+    weekly_label = "📆 Pekan Ini (✓)" if current_period_key == "weekly" else "📆 Pekan Ini"
+    monthly_label = "🗓️ Bulan Ini (✓)" if current_period_key == "monthly" else "🗓️ Bulan Ini"
+    custom_label = "🔍 Rentang Bebas (✓)" if current_period_key == "custom" else "🔍 Rentang Bebas"
+
     keyboard = [
         [
-            InlineKeyboardButton("⬅️ Kembali ke Daftar Binaan", callback_data="binaan_list"),
-            InlineKeyboardButton("🔄 Refresh", callback_data=f"binaan_detail_{mutarabbi_id}"),
+            InlineKeyboardButton(weekly_label, callback_data=f"binaan_period_weekly_{mutarabbi_id}"),
+            InlineKeyboardButton(monthly_label, callback_data=f"binaan_period_monthly_{mutarabbi_id}"),
         ],
-        [InlineKeyboardButton("🏠 Menu Utama", callback_data="btn_main_menu")],
+        [
+            InlineKeyboardButton(custom_label, callback_data=f"binaan_period_custom_{mutarabbi_id}"),
+        ],
+        [
+            InlineKeyboardButton("⬅️ Kembali ke Daftar Binaan", callback_data="binaan_list"),
+            InlineKeyboardButton("🔄 Refresh", callback_data=f"binaan_period_{current_period_key}_{mutarabbi_id}"),
+        ],
+        [
+            InlineKeyboardButton("🏠 Menu Utama", callback_data="btn_main_menu"),
+        ],
     ]
     return InlineKeyboardMarkup(keyboard)

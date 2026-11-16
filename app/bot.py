@@ -43,6 +43,7 @@ from app.handlers import (
     get_edit_name_conversation_handler,
     cekbinaan_command,
     handle_murobbi_callbacks,
+    handle_murobbi_custom_date_text,
 )
 
 
@@ -201,17 +202,20 @@ def create_application() -> Application:
     app.add_handler(
         CallbackQueryHandler(
             handle_murobbi_callbacks,
-            pattern="^(btn_cek_binaan|binaan_list|binaan_refresh|binaan_detail_)",
+            pattern="^(btn_cek_binaan|binaan_list|binaan_refresh|binaan_detail_|binaan_period_)",
         )
     )
 
-    # General text message handler (custom target & admin custom date range)
+    # General text message handler (custom target & admin custom date range & murobbi custom date)
     async def general_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.user_data.get("waiting_admin_custom_date"):
             await handle_admin_custom_date_text(update, context)
             return
         if context.user_data.get("editing_target_amalan"):
             await handle_custom_target_text(update, context)
+            return
+        if context.user_data.get("waiting_murobbi_custom_date"):
+            await handle_murobbi_custom_date_text(update, context)
             return
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, general_text_router))

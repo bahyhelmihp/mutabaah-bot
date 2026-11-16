@@ -127,7 +127,9 @@ class TestMurobbiFeature(unittest.IsolatedAsyncioTestCase):
         kb_detail = get_binaan_detail_keyboard("819899948")
         detail_data = [b.callback_data for row in kb_detail.inline_keyboard for b in row]
         self.assertIn("binaan_list", detail_data)
-        self.assertIn("binaan_detail_819899948", detail_data)
+        self.assertIn("binaan_period_weekly_819899948", detail_data)
+        self.assertIn("binaan_period_monthly_819899948", detail_data)
+        self.assertIn("binaan_period_custom_819899948", detail_data)
         self.assertIn("btn_main_menu", detail_data)
 
     async def test_cekbinaan_command_permission_denied(self):
@@ -173,6 +175,26 @@ class TestMurobbiFeature(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Monitoring Mutabaah Binaan", call_args)
         self.assertIn("Nurhadi Sukma Waluyo", call_args)
         self.assertIn("Doni Nurdiansah", call_args)
+
+    async def test_get_binaan_detail_period_weekly_and_custom(self):
+        await self.mapping_service.reload_cache()
+        detail_weekly = await self.mapping_service.get_binaan_detail(
+            "819899948", period_key="weekly"
+        )
+        self.assertEqual(detail_weekly["meta"]["name"], "Doni Nurdiansah")
+        self.assertEqual(detail_weekly["period_key"], "weekly")
+        self.assertIn("period_progress", detail_weekly)
+
+        detail_custom = await self.mapping_service.get_binaan_detail(
+            "819899948",
+            period_key="custom",
+            start_date="2026-11-01",
+            end_date="2026-11-07",
+            period_label="Liqo Pekan 1",
+        )
+        self.assertEqual(detail_custom["period_key"], "custom")
+        self.assertEqual(detail_custom["period_label"], "Liqo Pekan 1")
+        self.assertIn("items", detail_custom["period_progress"])
 
 
 if __name__ == "__main__":

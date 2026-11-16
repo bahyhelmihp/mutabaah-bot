@@ -2,7 +2,8 @@
 Service for calculating user month progress and aggregate admin statistics.
 """
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Set
+from datetime import datetime, timedelta
 from app.services.sheets import SheetsService
 from app.services.members import MembersService
 from app.services.settings import UserSettingsService
@@ -200,6 +201,171 @@ class StatisticsService:
             "completion_percentage": completion_pct,
             "submitted_dates": submitted_dates,
             "all_submitted_dates": sorted(list(all_user_submitted_dates)),
+            "missing_dates": missing_dates,
+        }
+
+    async def calculate_user_period_progress(
+        self,
+        user_id: int,
+        start_date: str,
+        end_date: str,
+        period_label: str,
+        period_key: str = "weekly",
+        tz_name: str = Config.TIMEZONE,
+    ) -> Dict[str, Any]:
+        """
+        Calculate user progress over an arbitrary date range (e.g. weekly for liqo, monthly, or custom).
+        """
+        now = get_now(tz_name)
+        today_str = get_today_str(tz_name)
+
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        today_dt = datetime(now.year, now.month, now.day)
+
+        total_days_in_period = max(1, (end_dt - start_dt).days + 1)
+        effective_end_dt = min(end_dt, today_dt)
+        days_passed = max(1, (effective_end_dt - start_dt).days + 1) if effective_end_dt >= start_dt else 1
+
+        # Retrieve user settings
+        active_keys = await self.settings.get_active_amalan(user_id)
+        targets = await self.settings.get_user_targets(user_id)
+
+        all_rows = await self.sheets.get_all_mutabaah_rows()
+        str_user_id = str(user_id).strip()
+
+        # Filter rows for this user in period
+        user_rows: List[Dict[str, Any]] = []
+        all_user_submitted_dates: Set[str] = set()
+        for r in all_rows:
+            r_uid = str(r.get("Telegram User ID", "")).strip()
+            if r_uid == str_user_id:
+                r_date = str(r.get("Date", "")).strip()
+                if r_date:
+                    all_user_submitted_dates.add(r_date)
+                if start_date <= r_date <= end_date:
+                    user_rows.append(r)
+
+        submitted_dates = sorted(list({str(r.get("Date", "")).strip() for r in user_rows if r.get("Date")}))
+        days_submitted = len(submitted_dates)
+
+        # Missing dates in the period up to effective_end_dt
+        missing_dates = []
+        if effective_end_dt >= start_dt:
+            curr = start_dt
+            while curr <= effective_end_dt:
+                d_str = curr.strftime("%Y-%m-%d")
+                if d_str not in submitted_dates:
+                    missing_dates.append(d_str)
+                curr += timedelta(days=1)
+
+        items: Dict[str, Any] = {}
+        ratios: List[float] = []
+
+        for key in active_keys:
+            defn = get_amalan_info(key)
+            if not defn:
+                continue
+
+            col = defn["column"]
+            custom_target = targets.get(key, defn.get("default_target", 1))
+
+            if defn["type"] == "bool":
+                actual_count = sum(1 for r in user_rows if _parse_bool(r.get(col)))
+                if period_key == "monthly" or total_days_in_period >= 28:
+                    if defn.get("target_period") == "monthly":
+                        target_val = custom_target
+                    else:
+                        target_val = days_passed
+                elif period_key == "weekly" or (6 <= total_days_in_period <= 8):
+                    if defn.get("target_period") == "monthly":
+                        target_val = max(1, round(custom_target / 4.0))
+                    elif defn.get("target_period") == "weekly":
+                        target_val = custom_target
+                    else:
+                        target_val = days_passed
+                else:
+                    # Custom range: scale target proportionally
+                    if defn.get("target_period") == "monthly":
+                        target_val = max(1, round((total_days_in_period / 30.0) * custom_target))
+                    elif defn.get("target_period") == "weekly":
+                        target_val = max(1, round((total_days_in_period / 7.0) * custom_target))
+                    else:
+                        target_val = days_passed
+
+                ratio = min(actual_count / target_val, 1.0) if target_val > 0 else 0.0
+                ratios.append(ratio)
+
+                items[key] = {
+                    "name": defn["name"],
+                    "short_name": defn["short_name"],
+                    "icon": defn["icon"],
+                    "type": "bool",
+                    "actual": actual_count,
+                    "target": target_val,
+                    "unit": "hari",
+                    "ratio": ratio,
+                }
+            else:
+                # Integer type (tilawah, sholat wajib, rawatib, almatsurat, shalawat, istighfar, tadabbur, olahraga)
+                if key == "olahraga":
+                    actual_sum = sum(_parse_int(r.get(col, 0)) if not _parse_bool(r.get(col)) else 30 for r in user_rows)
+                    if period_key == "weekly" or (6 <= total_days_in_period <= 8):
+                        target_val = custom_target
+                    else:
+                        target_val = max(1, round((total_days_in_period / 7.0) * custom_target))
+                    ratio = min(actual_sum / target_val, 1.0) if target_val > 0 else 0.0
+                    ratios.append(ratio)
+                    berhalangan_days = 0
+                else:
+                    berhalangan_days = sum(
+                        1 for r in user_rows 
+                        if str(r.get(col, "")).strip().lower() in ["berhalangan", "haid", "halangan"]
+                    )
+                    actual_sum = sum(
+                        _parse_int(r.get(col, 0)) for r in user_rows 
+                        if str(r.get(col, "")).strip().lower() not in ["berhalangan", "haid", "halangan"]
+                    )
+                    effective_days = max(0, days_passed - berhalangan_days)
+                    target_val = custom_target * effective_days
+
+                    if target_val > 0:
+                        ratio = min(actual_sum / target_val, 1.0)
+                        ratios.append(ratio)
+                    elif berhalangan_days > 0 and effective_days == 0:
+                        ratio = 1.0
+                    else:
+                        ratio = 0.0
+                        ratios.append(ratio)
+
+                items[key] = {
+                    "name": defn["name"],
+                    "short_name": defn["short_name"],
+                    "icon": defn["icon"],
+                    "type": "int",
+                    "actual": actual_sum,
+                    "target": target_val,
+                    "daily_target": custom_target,
+                    "unit": defn.get("unit", ""),
+                    "ratio": ratio,
+                    "berhalangan_days": berhalangan_days,
+                }
+
+        avg_ratio = (sum(ratios) / len(ratios)) if ratios else 0.0
+        completion_pct = round(avg_ratio * 100, 1)
+
+        return {
+            "period_key": period_key,
+            "period_label": period_label,
+            "start_date": start_date,
+            "end_date": end_date,
+            "days_submitted": days_submitted,
+            "days_passed": days_passed,
+            "total_days_in_period": total_days_in_period,
+            "active_keys": active_keys,
+            "items": items,
+            "completion_percentage": completion_pct,
+            "submitted_dates": submitted_dates,
             "missing_dates": missing_dates,
         }
 
