@@ -21,7 +21,7 @@ def get_main_menu_keyboard(
         [InlineKeyboardButton("📝 Isi Mutabaah Hari Ini", callback_data="btn_isi")],
         [InlineKeyboardButton("📊 Lihat Progress Saya", callback_data="btn_progress")],
         [InlineKeyboardButton("✏️ Edit / Isi Hari Lain", callback_data="btn_edit")],
-        [InlineKeyboardButton("⚙️ Pengaturan Amalan & Target", callback_data="btn_settings")],
+        [InlineKeyboardButton("⚙️ Pengaturan", callback_data="btn_settings")],
     ]
     if is_murobbi:
         keyboard.append([
