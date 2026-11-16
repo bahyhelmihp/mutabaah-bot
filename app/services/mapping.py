@@ -4,6 +4,7 @@ Source of truth: 'Mapping' worksheet in Google Sheets.
 """
 import logging
 import asyncio
+import time
 from typing import Dict, List, Optional, Set, Any
 from app.services.sheets import SheetsService
 from app.services.statistics import StatisticsService
@@ -24,6 +25,8 @@ class MappingService:
         self._murobbi_binaan: Dict[str, List[Dict[str, str]]] = {}
         self._mutarabbi_meta: Dict[str, Dict[str, str]] = {}
         self._cache_loaded = False
+        self._cache_time: float = 0.0
+        self.MAPPING_CACHE_TTL: float = 300.0  # 5 minutes auto-refresh TTL
         self._lock = asyncio.Lock()
 
     @classmethod
@@ -34,7 +37,14 @@ class MappingService:
 
     async def reload_cache(self, force: bool = False) -> None:
         """Fetch all mapping rows from Google Sheets and build cache."""
+        now = time.time()
+        if not force and self._cache_loaded and (now - self._cache_time < self.MAPPING_CACHE_TTL):
+            return
+
         async with self._lock:
+            # Double check inside lock
+            if not force and self._cache_loaded and (time.time() - self._cache_time < self.MAPPING_CACHE_TTL):
+                return
             try:
                 rows = await self.sheets.get_all_mapping_rows(force_refresh=force)
                 new_murobbi_ids: Set[str] = set()
@@ -78,6 +88,7 @@ class MappingService:
                 self._murobbi_binaan = new_murobbi_binaan
                 self._mutarabbi_meta = new_mutarabbi_meta
                 self._cache_loaded = True
+                self._cache_time = time.time()
                 logger.info(
                     "Loaded mapping cache: %d murobbi, %d total binaan entries",
                     len(self._murobbi_ids),
@@ -87,8 +98,9 @@ class MappingService:
                 logger.error("Failed to load mapping cache from Google Sheets: %s", e)
 
     async def is_murobbi_async(self, user_id: int) -> bool:
-        """Check if user_id is listed as a Murobbi (auto-loads cache if needed)."""
-        if not self._cache_loaded:
+        """Check if user_id is listed as a Murobbi (auto-loads or refreshes cache if TTL expired)."""
+        now = time.time()
+        if not self._cache_loaded or (now - self._cache_time > self.MAPPING_CACHE_TTL):
             await self.reload_cache()
         return str(user_id).strip() in self._murobbi_ids
 
@@ -116,7 +128,8 @@ class MappingService:
         - Submission status today
         - Monthly progress completion %
         """
-        if not self._cache_loaded:
+        now = time.time()
+        if not self._cache_loaded or (now - self._cache_time > self.MAPPING_CACHE_TTL):
             await self.reload_cache()
 
         uid_str = str(user_id).strip()

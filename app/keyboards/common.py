@@ -406,6 +406,7 @@ def get_admin_keyboard(sheet_id: str) -> InlineKeyboardMarkup:
     keyboard = [
         [InlineKeyboardButton("📊 Statistik Mutabaah", callback_data="admin_stats")],
         [InlineKeyboardButton("🔗 Buka Google Sheet", url=sheet_url)],
+        [InlineKeyboardButton("🏠 Menu Utama", callback_data="btn_main_menu")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -433,6 +434,9 @@ def get_admin_period_keyboard(
         ],
         [
             InlineKeyboardButton("🔗 Buka Google Sheet", url=sheet_url),
+        ],
+        [
+            InlineKeyboardButton("🏠 Menu Utama", callback_data="btn_main_menu"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)

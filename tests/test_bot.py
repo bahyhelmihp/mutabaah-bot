@@ -104,7 +104,8 @@ class TestUtilsAndKeyboards(unittest.TestCase):
         self.assertEqual(len(confirm.inline_keyboard), 2)
 
         admin_kb = get_admin_keyboard("test_sheet_id")
-        self.assertEqual(len(admin_kb.inline_keyboard), 2)
+        self.assertEqual(len(admin_kb.inline_keyboard), 3)
+        self.assertEqual(admin_kb.inline_keyboard[2][0].callback_data, "btn_main_menu")
 
         # New keyboards
         dashboard_kb = get_today_dashboard_keyboard(["tilawah", "shalawat", "istighfar"])
