@@ -11,6 +11,8 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
+    filters,
     ContextTypes,
 )
 
@@ -31,7 +33,18 @@ from app.handlers import (
     admin_command,
     stats_command,
     export_command,
+    handle_admin_callbacks,
+    handle_admin_custom_date_text,
+    settings_command,
+    target_command,
+    handle_settings_callbacks,
+    handle_custom_target_text,
+    edit_name_command,
+    get_edit_name_conversation_handler,
+    cekbinaan_command,
+    handle_murobbi_callbacks,
 )
+
 
 # Configure logging
 logging.basicConfig(
@@ -122,14 +135,26 @@ def create_application() -> Application:
         logger.error("CRITICAL: TELEGRAM_BOT_TOKEN is not configured! Exiting.")
         sys.exit(1)
 
-    app = ApplicationBuilder().token(Config.TELEGRAM_BOT_TOKEN).build()
+    async def post_init(application: Application):
+        try:
+            from app.services.mapping import MappingService
+            await MappingService.get_instance().reload_cache()
+            logger.info("Murobbi mapping cache initialized on startup.")
+        except Exception as e:
+            logger.warning("Failed to initialize mapping cache on startup: %s", e)
+
+    app = ApplicationBuilder().token(Config.TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
     # Register handlers
     # Registration conversation handler (handles /start for unregistered users)
     app.add_handler(get_registration_handler())
 
+    # Edit name conversation handler (handles /editnama, /nama, /gantinama, and btn_edit_name)
+    app.add_handler(get_edit_name_conversation_handler())
+
     # Mutabaah conversation handler (handles /isi, /edit, and flow buttons)
     app.add_handler(get_mutabaah_conversation_handler())
+
 
     # Standard commands & callback handlers
     app.add_handler(CommandHandler("start", start_command))
@@ -139,11 +164,46 @@ def create_application() -> Application:
     app.add_handler(CommandHandler("progress", progress_command))
     app.add_handler(CallbackQueryHandler(progress_command, pattern="^btn_progress$"))
 
-    # Admin commands
+    # Amalan selection & target settings
+    app.add_handler(CommandHandler(["amalan", "settings"], settings_command))
+    app.add_handler(CommandHandler("target", target_command))
+    app.add_handler(
+        CallbackQueryHandler(
+            handle_settings_callbacks,
+            pattern="^(btn_settings|btn_settings_amalan|btn_settings_target|toggle_amalan_|amalan_select_all|amalan_reset_default|btn_settings_save|btn_main_menu|edit_target_|set_target_)",
+        )
+    )
+
+    # Admin commands & callbacks
     app.add_handler(CommandHandler("admin", admin_command))
     app.add_handler(CommandHandler("stats", stats_command))
-    app.add_handler(CallbackQueryHandler(stats_command, pattern="^admin_stats$"))
     app.add_handler(CommandHandler("export", export_command))
+    app.add_handler(
+        CallbackQueryHandler(
+            handle_admin_callbacks,
+            pattern="^(admin_stats|admin_period_|admin_sync_)",
+        )
+    )
+
+    # Murobbi commands & callbacks
+    app.add_handler(CommandHandler(["cekbinaan", "binaan"], cekbinaan_command))
+    app.add_handler(
+        CallbackQueryHandler(
+            handle_murobbi_callbacks,
+            pattern="^(btn_cek_binaan|binaan_list|binaan_refresh|binaan_detail_)",
+        )
+    )
+
+    # General text message handler (custom target & admin custom date range)
+    async def general_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if context.user_data.get("waiting_admin_custom_date"):
+            await handle_admin_custom_date_text(update, context)
+            return
+        if context.user_data.get("editing_target_amalan"):
+            await handle_custom_target_text(update, context)
+            return
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, general_text_router))
 
     # Error handling
     app.add_error_handler(error_handler)

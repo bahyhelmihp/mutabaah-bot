@@ -72,6 +72,28 @@ class MembersService:
             }
         return success
 
+    async def update_name(
+        self, user_id: int, new_full_name: str, username: Optional[str] = None
+    ) -> bool:
+        """Update full name for a member in Google Sheets and cache."""
+        clean_name = new_full_name.strip()
+        formatted_username = f"@{username.lstrip('@')}" if username else None
+        success = await self.sheets.update_member_name(
+            user_id=user_id,
+            new_full_name=clean_name,
+            username=formatted_username,
+        )
+        if success:
+            uid_str = str(user_id)
+            if uid_str in self._cache:
+                self._cache[uid_str]["Full Name"] = clean_name
+                if formatted_username:
+                    self._cache[uid_str]["Telegram Username"] = formatted_username
+            else:
+                await self.reload_cache()
+        return success
+
+
     async def get_all_active_members(self) -> List[Dict]:
         """Return list of all registered members where Active == TRUE."""
         await self.reload_cache()

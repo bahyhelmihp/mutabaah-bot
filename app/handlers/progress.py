@@ -1,9 +1,17 @@
+"""
+Handler for /progress command displaying personal monthly achievement based on active amalan.
+"""
 import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 from app.services.statistics import StatisticsService
 from app.services.members import MembersService
-from app.keyboards.common import get_main_menu_keyboard
+from app.keyboards.common import (
+    get_main_menu_keyboard,
+    get_user_main_menu_keyboard,
+    get_progress_keyboard,
+)
+from app.utils.datetime import format_missing_dates_id
 
 logger = logging.getLogger(__name__)
 
@@ -38,41 +46,63 @@ async def progress_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error("Error calculating progress for %s: %s", user.id, e)
         err_msg = "⚠️ Maaf, terjadi kendala saat mengambil data progress dari Google Sheets."
+        markup = await get_user_main_menu_keyboard(user.id)
         if update.callback_query:
-            await update.callback_query.message.reply_text(err_msg, reply_markup=get_main_menu_keyboard())
+            await update.callback_query.message.reply_text(
+                err_msg, reply_markup=markup
+            )
         else:
-            await update.message.reply_text(err_msg, reply_markup=get_main_menu_keyboard())
+            await update.message.reply_text(
+                err_msg, reply_markup=markup
+            )
         return
 
-    text = (
-        f"📊 *Progress {data['month_label']}*\n\n"
-        f"Hari terisi: *{data['days_submitted']}/{data['days_passed']}*\n\n"
-        f"📖 *Tilawah:*\n"
-        f"{data['total_tilawah']} / {data['target_tilawah']} halaman\n\n"
-        f"🕌 *Sholat wajib:*\n"
-        f"{data['total_wajib']} / {data['target_wajib']}\n\n"
-        f"🌙 *Rawatib:*\n"
-        f"{data['total_rawatib']} rakaat\n\n"
-        f"📿 *Al-Ma’tsurat:*\n"
-        f"{data['total_almatsurat']}x\n\n"
-        f"🌃 *Qiyamulail:*\n"
-        f"{data['count_qiyamulail']} hari\n\n"
-        f"☀️ *Dhuha:*\n"
-        f"{data['count_dhuha']} hari\n\n"
-        f"🏃 *Olahraga:*\n"
-        f"{data['count_olahraga']} hari\n\n"
-        f"🎯 *Tingkat Ketercapaian Target:* *{data['completion_percentage']}%*"
+    lines = [
+        f"📊 *Progress Bulan {data['month_label']}*\n",
+        f"📅 Hari terisi: *{data['days_submitted']} dari {data['days_passed']} hari*",
+    ]
+
+    missing_dates = data.get("missing_dates", [])
+    if missing_dates:
+        formatted_missing = format_missing_dates_id(missing_dates)
+        lines.append(f"🔴 *Tanggal belum diisi ({len(missing_dates)} hari):*")
+        lines.append(f"   👉 *{formatted_missing}*\n")
+    else:
+        lines.append("✅ *Alhamdulillah, semua hari bulan ini telah terisi!*\n")
+
+    items = data.get("items", {})
+    for key, item in items.items():
+        icon = item.get("icon", "✨")
+        name = item.get("name", key)
+        actual = item.get("actual", 0)
+        target = item.get("target", 0)
+        unit = item.get("unit", "")
+        pct = round(item.get("ratio", 0.0) * 100)
+
+        lines.append(f"{icon} *{name}:*")
+        berhalangan_days = item.get("berhalangan_days", 0)
+        if berhalangan_days > 0:
+            lines.append(f"   {actual} / {target} {unit} ({pct}%) • _🌸 {berhalangan_days} hari berhalangan_")
+        else:
+            lines.append(f"   {actual} / {target} {unit} ({pct}%)")
+
+    lines.append(
+        f"\n🎯 *Tingkat Ketercapaian Target Keseluruhan:* *{data['completion_percentage']}%*"
     )
+
+    full_text = "\n".join(lines)
+    reply_markup = get_progress_keyboard(has_missing=bool(missing_dates))
 
     if update.callback_query:
         await update.callback_query.message.reply_text(
-            text,
-            reply_markup=get_main_menu_keyboard(),
+            full_text,
+            reply_markup=reply_markup,
             parse_mode="Markdown",
         )
     else:
         await update.message.reply_text(
-            text,
-            reply_markup=get_main_menu_keyboard(),
+            full_text,
+            reply_markup=reply_markup,
             parse_mode="Markdown",
         )
+

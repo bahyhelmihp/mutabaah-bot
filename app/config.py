@@ -25,6 +25,9 @@ class Config:
     # Worksheet Names
     SHEET_MEMBERS: str = "Members"
     SHEET_DAILY_MUTABAAH: str = "Daily Mutabaah"
+    SHEET_USER_SETTINGS: str = "User Settings"
+    SHEET_SUMMARY_STATS: str = "Summary Stats"
+    SHEET_MAPPING: str = "Mapping"
 
     @classmethod
     def load(cls):

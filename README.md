@@ -9,72 +9,53 @@ Bot ini menyederhanakan proses mutabaah: anggota tidak perlu lagi membuka atau m
 ## 📌 Fitur Utama
 
 - **Pendaftaran Anggota Mandiri**: Anggota baru otomatis diminta mendaftarkan nama lengkap saat pertama kali menekan `/start`.
-- **Alur Pengisian Cepat (Kurang dari 1 Menit)**:
-  - Dipandu langkah demi langkah dengan *inline keyboard*.
-  - Tombol angka cepat & fleksibel (tetap mendukung input teks manual jika diinginkan).
-  - Navigasi **⬅️ Kembali** di setiap langkah dan **❌ Batal** kapan saja.
+- **Fleksibilitas Pengisian Amalan (Per Amalan atau Berurutan)**:
+  - **Opsi Isi Satu Amalan**: User dapat memilih untuk mengisi atau memperbarui hanya satu amalan saja tanpa harus menjawab semua pertanyaan.
+  - **Opsi Isi Semua Berurutan**: Panduan langkah demi langkah cepat dan terstruktur untuk semua amalan yang dipilih.
   - Ringkasan konfirmasi sebelum data disimpan ke Google Sheets.
-- **Pembaruan Data Cerdas (Upsert)**:
+- **Kustomisasi Amalan yang Dimutabaah (`/amalan`)**:
+  - Anggota bebas memilih amalan apa saja yang ingin dimutabaah melalui checklist interaktif (misal: menonaktifkan Qiyamulail atau amalan lain jika tidak diwajibkan).
+  - Amalan yang tidak dipilih tidak akan ditanyakan dan tidak mengurangi persentase capaian target.
+- **Kustomisasi Target Angka Harian & Bulanan (`/target`)**:
+  - Setiap pengguna dapat menyesuaikan target angka mereka sendiri; target default sistem berfungsi sebagai nilai awal.
+- **Dukungan 13 Amalan Yaumiyah Lengkap**:
+  1. 📖 Tilawah Al-Qur'an (default: 20 halaman/hari)
+  2. 🕌 Sholat Wajib (default: 5 waktu/hari)
+  3. 🌙 Sholat Sunnah Rawatib (default: 12 rakaat/hari)
+  4. 📿 Al-Ma’tsurat (default: 2 kali/hari)
+  5. 🌸 Shalawat (default: 100 kali/hari)
+  6. 🤲 Istighfar (default: 100 kali/hari)
+  7. 📜 Tadabbur Al-Qur'an (default: 1 ayat/hari)
+  8. 🍽️ Shaum Sunnah (default: min. 4 hari/bulan)
+  9. 🌃 Qiyamulail (default: 12 hari/bulan)
+  10. ☀️ Sholat Dhuha (default: 12 hari/bulan)
+  11. 🏃 Olahraga (default: 30 menit/pekan)
+  12. 🤝 Silaturahim (default: min. 4 hari/bulan)
+  13. 🤲 Doa untuk Kebaikan Ummat Islam (default: 1 kali/hari)
+- **Opsi Cepat "Berhalangan" (Haid)**:
+  - Tersedia tombol cepat `🌸 Berhalangan` pada pengisian **Tilawah Al-Qur'an** dan **Sholat Wajib**.
+  - Mengakomodasi akhwat yang sedang haid/berhalangan syar'i.
+  - **Pengecualian Performa Otomatis**: Hari-hari yang ditandai *Berhalangan* otomatis dikecualikan dari pembagi/target performa pribadi (`/progress`) maupun rata-rata agregat admin (`/stats`), sehingga tidak menurunkan persentase capaian target secara tidak adil.
+- **Pembaruan Data Cerdas (Upsert & Preservasi Data)**:
   - 1 baris per pengguna per hari (menggunakan timezone Korea `Asia/Seoul`).
-  - Jika anggota mengisi ulang atau mengedit hari ini (`/edit`), bot memperbarui baris hari ini dan mencatat waktu pembaruan (*Last Updated*) tanpa membuat baris duplikat.
-- **Pantau Progres Bulanan (`/progress`)**:
-  - Rekap jumlah hari terisi pada bulan berjalan.
-  - Perbandingan capaian tilawah, sholat wajib, rawatib, al-ma'tsurat terhadap target harian.
-  - Rekap amalan yaumiyah (Qiyamulail, Dhuha, Olahraga).
-  - Kalkulasi persentase ketercapaian target mutabaah.
+  - Pembaruan sebagian (*partial update*) menjaga data amalan lain yang sudah diisi sebelumnya pada hari tersebut.
+- **Pantau Progres Bulanan Personal (`/progress`)**:
+  - Menghitung persentase ketercapaian secara adil hanya berdasarkan amalan yang diaktifkan oleh pengguna.
 - **Pengingat Harian Otomatis (*Daily Reminder*)**:
-  - Dikirim setiap pukul 21:00 KST (`Asia/Seoul`).
-  - **Hanya dikirim kepada anggota terdaftar yang belum mengisi mutabaah hari ini**.
-  - Dilengkapi tombol langsung `[📝 Isi Sekarang]`.
+  - Dikirim setiap pukul 21:00 KST (`Asia/Seoul`) kepada anggota terdaftar yang belum mengisi mutabaah hari ini.
+- **Edit Nama Terdaftar (`/editnama` / `/nama`)**:
+  - Memungkinkan anggota mengoreksi nama lengkap kapan saja langsung dari Telegram atau menu pengaturan tanpa mengulang pendaftaran.
 - **Panel Admin Khusus (`/admin`, `/stats`, `/export`)**:
-  - Hanya dapat diakses oleh user ID yang didaftarkan di `ADMIN_TELEGRAM_IDS`.
-  - Rekap agregat bulanan: total anggota, jumlah submit hari ini, persentase keaktifan hari ini, rata-rata ketercapaian amalan.
-  - Tautan langsung ke Google Sheets tanpa mengekspos privasi data ke anggota umum.
+  - Khusus pengurus terdaftar di `ADMIN_TELEGRAM_IDS`.
 
----
-
-## 🏗️ Arsitektur Proyek
-
-```text
-mutabaah-bot/
-├── app/
-│   ├── __init__.py
-│   ├── bot.py               # Inisialisasi bot, scheduler pengingat, polling/webhook runner
-│   ├── config.py            # Konfigurasi & validasi environment variables
-│   ├── handlers/
-│   │   ├── __init__.py
-│   │   ├── start.py         # Registrasi anggota, sapaan /start, /help, /cancel
-│   │   ├── mutabaah.py      # ConversationHandler mutabaah (/isi, /edit, konfirmasi simpan)
-│   │   ├── progress.py      # Laporan capaian mutabaah pribadi (/progress)
-│   │   └── admin.py         # Panel admin (/admin, /stats, /export)
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── sheets.py        # Klien Google Sheets (gspread), auto-create sheet, upsert row
-│   │   ├── members.py       # Manajemen data anggota & verifikasi status aktif
-│   │   └── statistics.py    # Logika kalkulasi progres personal & statistik agregat admin
-│   ├── keyboards/
-│   │   ├── __init__.py
-│   │   └── common.py        # Builder inline keyboard & navigasi tombol Telegram
-│   └── utils/
-│       ├── __init__.py
-│       └── datetime.py      # Konversi timezone Asia/Seoul & format penanggalan Indonesia
-├── tests/
-│   ├── test_bot.py          # Unit tests keyboard, kalkulasi statistik, & timezone
-│   └── test_sheets.py       # Unit tests upsert & update logic Google Sheets
-├── .env.example             # Template variabel lingkungan
-├── .gitignore
-├── requirements.txt         # Dependensi Python
-└── README.md
-```
 
 ---
 
 ## 📊 Struktur Data Google Sheets
 
-Bot menggunakan satu Google Spreadsheet terpusat dengan 2 *worksheet*. Jika lembar kerja belum ada, bot akan otomatis membuatnya beserta baris judul kolom:
+Bot menggunakan satu Google Spreadsheet terpusat dengan 3 *worksheet*:
 
 ### 1. Worksheet: `Members`
-Menyimpan daftar anggota yang terdaftar di bot:
 | Kolom | Tipe | Keterangan |
 | :--- | :--- | :--- |
 | `Telegram User ID` | Integer/Text | ID unik Telegram (primary identifier) |
@@ -84,22 +65,36 @@ Menyimpan daftar anggota yang terdaftar di bot:
 | `Active` | Boolean (TRUE/FALSE) | Status keaktifan anggota |
 
 ### 2. Worksheet: `Daily Mutabaah`
-Menyimpan 1 baris per pengguna per tanggal:
-| Kolom | Tipe | Target Harian | Contoh Nilai |
+| Kolom | Tipe | Target Default | Contoh Nilai |
 | :--- | :--- | :--- | :--- |
-| `Date` | Date (YYYY-MM-DD) | - | `2026-10-13` |
+| `Date` | Date (YYYY-MM-DD) | - | `2026-10-14` |
 | `Telegram User ID` | Integer/Text | - | `123456789` |
 | `Telegram Username` | Text | - | `@bahyhelmihp` |
 | `Full Name` | Text | - | `Bahy Helmi` |
-| `Tilawah Pages` | Integer (0-100) | 20 halaman | `20` |
-| `Sholat Wajib` | Integer (0-5) | 5 waktu | `5` |
-| `Rawatib Rakaat` | Integer (0-12) | 12 rakaat | `8` |
-| `Almatsurat` | Integer (0-2) | 2 kali | `2` |
+| `Tilawah Pages` | Integer | 20 halaman | `20` |
+| `Sholat Wajib` | Integer | 5 waktu | `5` |
+| `Rawatib Rakaat` | Integer | 12 rakaat | `8` |
+| `Almatsurat` | Integer | 2 kali | `2` |
+| `Shalawat` | Integer | 100 kali | `100` |
+| `Istighfar` | Integer | 100 kali | `100` |
+| `Tadabbur Ayat` | Integer | 1 ayat | `2` |
+| `Shaum Sunnah` | Boolean (TRUE/FALSE) | Min. 4x / bulan | `TRUE` |
 | `Qiyamulail` | Boolean (TRUE/FALSE) | 3x / pekan | `TRUE` |
 | `Dhuha` | Boolean (TRUE/FALSE) | 3x / pekan | `TRUE` |
-| `Olahraga` | Boolean (TRUE/FALSE) | Min. 5 menit | `TRUE` |
-| `Submission Time` | Datetime | - | `2026-10-13 21:30:00` |
-| `Last Updated` | Datetime | - | `2026-10-13 21:30:00` |
+| `Olahraga` | Integer | 30 menit / pekan | `30` |
+| `Silaturahim` | Boolean (TRUE/FALSE) | Min. 4x / bulan | `TRUE` |
+| `Doa Ummat Islam` | Integer | 1 kali / hari | `2` |
+| `Submission Time` | Datetime | - | `2026-10-14 21:30:00` |
+| `Last Updated` | Datetime | - | `2026-10-14 21:30:00` |
+
+### 3. Worksheet: `User Settings`
+Menyimpan pilihan amalan aktif dan target khusus per user:
+| Kolom | Tipe | Keterangan |
+| :--- | :--- | :--- |
+| `Telegram User ID` | Integer/Text | ID unik anggota |
+| `Active Amalan` | Text | Daftar amalan aktif dipisahkan koma |
+| `Target Tilawah` ... `Target Doa Ummat` | Integer | Nilai target kustom user |
+| `Last Updated` | Datetime | Waktu pembaruan pengaturan |
 
 ---
 
@@ -107,20 +102,25 @@ Menyimpan 1 baris per pengguna per tanggal:
 
 ### 1. Buat Bot Telegram via BotFather
 1. Buka Telegram dan cari [@BotFather](https://t.me/BotFather).
-2. Kirim perintah `/newbot` dan ikuti petunjuk nama bot (misal: `Mutabaah IMA Korea Bot`).
-3. Simpan **HTTP API Token** yang diberikan (misal: `7123456789:ABCdef...`).
+2. Kirim perintah `/newbot` dan ikuti petunjuk nama bot.
+3. Simpan **HTTP API Token** yang diberikan.
 4. (Opsional) Daftarkan menu perintah di BotFather melalui `/setcommands`:
    ```text
    start - Buka menu utama mutabaah
-   isi - Isi mutabaah hari ini
+   isi - Isi mutabaah hari ini (per amalan atau berurutan)
    edit - Ubah isian mutabaah hari ini
    progress - Lihat rekap progress bulan ini
+   amalan - Pilih amalan yang ingin dimutabaah
+   target - Atur target harian & bulanan pribadi
+   settings - Pengaturan amalan & target
+   editnama - Ubah nama lengkap terdaftar
    help - Panduan amalan & penggunaan bot
-   cancel - Batalkan pengisian yang sedang aktif
+   cancel - Batalkan proses yang sedang aktif
    admin - Panel admin (khusus pengurus)
    stats - Statistik agregat (khusus pengurus)
    export - Tautan spreadsheet (khusus pengurus)
    ```
+
 
 ---
 
