@@ -57,15 +57,20 @@ logger = logging.getLogger(__name__)
 ) = range(5)
 
 
-async def send_or_edit(update: Update, text: str, reply_markup=None):
+async def send_or_edit(
+    update: Update, text: str, reply_markup=None, toast_text: Optional[str] = None
+):
     """Utility to edit message if callback_query, or send new message if text."""
     if update.callback_query:
         try:
-            await update.callback_query.edit_message_text(
+            # Parallelize answerCallbackQuery (with toast text!) and edit_message_text
+            answer_coro = update.callback_query.answer(text=toast_text)
+            edit_coro = update.callback_query.edit_message_text(
                 text=text,
                 reply_markup=reply_markup,
                 parse_mode="Markdown",
             )
+            await asyncio.gather(answer_coro, edit_coro, return_exceptions=True)
             return
         except Exception:
             pass
@@ -83,21 +88,25 @@ async def init_user_mutabaah_data(
     """Initialize or load user mutabaah session data for a specific date (defaults to today)."""
     date_str = target_date or get_today_str(Config.TIMEZONE)
     settings_service = UserSettingsService.get_instance()
-    active_keys = await settings_service.get_active_amalan(user_id)
-    targets = await settings_service.get_user_targets(user_id)
+    members_service = MembersService.get_instance()
+    sheets_service = SheetsService.get_instance()
 
-    members_service = MembersService()
-    member = await members_service.get_member(user_id)
+    # Parallelize fetching member, user settings, and mutabaah record concurrently
+    member_res, settings_res, existing_res = await asyncio.gather(
+        members_service.get_member(user_id),
+        settings_service.get_user_settings(user_id),
+        sheets_service.get_user_mutabaah_record(user_id, date_str),
+        return_exceptions=True,
+    )
+
+    member = member_res if isinstance(member_res, dict) else None
+    settings = settings_res if isinstance(settings_res, dict) else {}
+    existing = existing_res if isinstance(existing_res, dict) else None
+
+    active_keys = settings.get("active_amalan", list(ALL_AMALAN_KEYS))
+    targets = settings.get("targets", get_default_targets())
     full_name = member.get("Full Name", user.first_name) if member else user.first_name
     username = f"@{user.username.lstrip('@')}" if user.username else ""
-
-    # Check for existing submission for this date in Google Sheets
-    sheets_service = SheetsService.get_instance()
-    existing = None
-    try:
-        existing = await sheets_service.get_user_mutabaah_record(user_id, date_str)
-    except Exception as e:
-        logger.error("Error fetching mutabaah for %s on %s: %s", user_id, date_str, e)
 
     data: Dict[str, Any] = {
         "date": date_str,
@@ -189,10 +198,7 @@ async def start_mutabaah(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not user:
         return ConversationHandler.END
 
-    if update.callback_query:
-        await update.callback_query.answer()
-
-    members_service = MembersService()
+    members_service = MembersService.get_instance()
     if not await members_service.is_registered(user.id):
         msg = "⚠️ Anda belum terdaftar. Silakan ketik /start untuk mendaftar terlebih dahulu."
         await send_or_edit(update, msg)
@@ -355,7 +361,9 @@ async def handle_dashboard_actions(update: Update, context: ContextTypes.DEFAULT
     if cb == "btn_fill_all":
         # Start sequential flow through active amalan
         data["seq_index"] = 0
-        return await show_sequential_prompt(update, context)
+        return await show_sequential_prompt(
+            update, context, toast_text="🚀 Memulai pengisian berurutan..."
+        )
 
     if cb.startswith("fill_one_"):
         key = cb.replace("fill_one_", "")
@@ -460,7 +468,8 @@ async def handle_single_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"📅 *Tanggal:* {date_label}\n\n"
         "Data sudah otomatis tersimpan ke Google Sheets."
     )
-    await send_or_edit(update, success_text, get_single_saved_keyboard())
+    toast_msg = f"{icon} {name}: {formatted_val} ✅"
+    await send_or_edit(update, success_text, get_single_saved_keyboard(), toast_text=toast_msg)
     return STATE_DASHBOARD
 
 
@@ -468,14 +477,16 @@ async def handle_single_input(update: Update, context: ContextTypes.DEFAULT_TYPE
 # SEQUENTIAL FILLING FLOW ("Isi Semua Berurutan")
 # -------------------------------------------------------------
 
-async def show_sequential_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def show_sequential_prompt(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, toast_text: Optional[str] = None
+) -> int:
     data = context.user_data.get("mutabaah", {})
     active_keys = data.get("active_keys", ALL_AMALAN_KEYS)
     idx = data.get("seq_index", 0)
 
     if idx >= len(active_keys):
         # All active amalan filled, show confirmation
-        return await show_confirmation_prompt(update, context)
+        return await show_confirmation_prompt(update, context, toast_text=toast_text)
 
     key = active_keys[idx]
     defn = get_amalan_info(key)
@@ -493,7 +504,7 @@ async def show_sequential_prompt(update: Update, context: ContextTypes.DEFAULT_T
         "Pilih tombol cepat di bawah atau ketik angka secara manual:"
     )
     markup = get_amalan_input_keyboard(key, user_target=target, is_sequential=True)
-    await send_or_edit(update, text, markup)
+    await send_or_edit(update, text, markup, toast_text=toast_text)
     return STATE_SEQUENTIAL_STEP
 
 
@@ -510,12 +521,13 @@ async def handle_sequential_input(update: Update, context: ContextTypes.DEFAULT_
 
     # Handle navigation callbacks
     if update.callback_query:
-        await update.callback_query.answer()
         cb = update.callback_query.data
         if cb == "back":
             if idx > 0:
                 data["seq_index"] = idx - 1
-                return await show_sequential_prompt(update, context)
+                return await show_sequential_prompt(
+                    update, context, toast_text="⬅️ Kembali ke amalan sebelumnya"
+                )
             else:
                 return await show_dashboard(update, context)
 
@@ -523,15 +535,28 @@ async def handle_sequential_input(update: Update, context: ContextTypes.DEFAULT_
     if val is None:
         targets = data.get("targets", {})
         target = targets.get(key, defn.get("default_target", 0))
-        await update.effective_message.reply_text(
-            "⚠️ Masukkan nilai yang valid atau gunakan tombol di bawah:",
-            reply_markup=get_amalan_input_keyboard(key, user_target=target, is_sequential=True),
-        )
+        if update.callback_query:
+            await update.callback_query.answer("⚠️ Input tidak valid", show_alert=False)
+        else:
+            await update.effective_message.reply_text(
+                "⚠️ Masukkan nilai yang valid atau gunakan tombol di bawah:",
+                reply_markup=get_amalan_input_keyboard(key, user_target=target, is_sequential=True),
+            )
         return STATE_SEQUENTIAL_STEP
 
     data[key] = val
-    data["seq_index"] = idx + 1
-    return await show_sequential_prompt(update, context)
+    next_idx = idx + 1
+    data["seq_index"] = next_idx
+
+    val_str = format_amalan_value(key, val)
+    icon = defn.get("icon", "")
+    short_name = defn.get("short_name", defn.get("name", key))
+    toast_msg = f"{icon} {short_name}: {val_str}"
+
+    if next_idx >= len(active_keys):
+        return await show_confirmation_prompt(update, context, toast_text=f"{toast_msg} 🎉")
+
+    return await show_sequential_prompt(update, context, toast_text=toast_msg)
 
 
 def parse_input_value(update: Update, defn: Dict[str, Any]) -> Optional[Any]:
@@ -610,11 +635,13 @@ def build_summary_text(data: Dict[str, Any], date_label: str) -> str:
     return "\n".join(lines)
 
 
-async def show_confirmation_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def show_confirmation_prompt(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, toast_text: Optional[str] = None
+) -> int:
     data = context.user_data.get("mutabaah", {})
     today_label = format_date_id(date_str=data.get("date"), tz_name=Config.TIMEZONE)
     summary_text = build_summary_text(data, today_label)
-    await send_or_edit(update, summary_text, get_confirmation_keyboard())
+    await send_or_edit(update, summary_text, get_confirmation_keyboard(), toast_text=toast_text)
     return STATE_CONFIRMATION
 
 

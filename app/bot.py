@@ -137,11 +137,22 @@ def create_application() -> Application:
 
     async def post_init(application: Application):
         try:
+            import asyncio
             from app.services.mapping import MappingService
-            await MappingService.get_instance().reload_cache()
-            logger.info("Murobbi mapping cache initialized on startup.")
+            from app.services.members import MembersService
+            from app.services.settings import UserSettingsService
+            from app.services.sheets import SheetsService
+            logger.info("Pre-warming all in-memory caches...")
+            await asyncio.gather(
+                MappingService.get_instance().reload_cache(),
+                MembersService.get_instance().reload_cache(),
+                UserSettingsService.get_instance().reload_cache(),
+                SheetsService.get_instance().get_all_mutabaah_rows(),
+                return_exceptions=True,
+            )
+            logger.info("All caches (Mapping, Members, Settings, Mutabaah) successfully preloaded.")
         except Exception as e:
-            logger.warning("Failed to initialize mapping cache on startup: %s", e)
+            logger.warning("Failed to initialize caches on startup: %s", e)
 
     app = ApplicationBuilder().token(Config.TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 

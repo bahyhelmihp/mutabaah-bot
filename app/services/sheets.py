@@ -132,10 +132,10 @@ class SheetsService:
         self._mapping_cache_time: float = 0.0
 
         # Cache TTL durations in seconds
-        self.MUTABAAH_CACHE_TTL = 45.0   # 45 seconds
-        self.MEMBERS_CACHE_TTL = 180.0   # 3 minutes
-        self.SETTINGS_CACHE_TTL = 180.0  # 3 minutes
-        self.MAPPING_CACHE_TTL = 180.0   # 3 minutes
+        self.MUTABAAH_CACHE_TTL = 300.0  # 5 minutes (kept hot & updated in-place on submissions)
+        self.MEMBERS_CACHE_TTL = 300.0   # 5 minutes
+        self.SETTINGS_CACHE_TTL = 300.0  # 5 minutes
+        self.MAPPING_CACHE_TTL = 300.0   # 5 minutes
 
     def invalidate_mutabaah_cache(self):
         self._mutabaah_cache = None
