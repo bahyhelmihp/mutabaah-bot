@@ -2,6 +2,7 @@
 Service for managing user-specific amalan choices and custom targets.
 """
 import logging
+import time
 from typing import Dict, List, Any, Optional
 from app.services.sheets import SheetsService
 from app.services.amalan import (
@@ -18,16 +19,28 @@ logger = logging.getLogger(__name__)
 class UserSettingsService:
     _instance: Optional["UserSettingsService"] = None
 
+    def __new__(cls, sheets_service: Optional[SheetsService] = None):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self, sheets_service: Optional[SheetsService] = None):
+        if getattr(self, "_initialized", False):
+            if sheets_service and sheets_service is not self.sheets:
+                self.sheets = sheets_service
+            return
         self.sheets = sheets_service or SheetsService.get_instance()
         # Cache format: {str(user_id): {"active_amalan": [...], "targets": {...}}}
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._cache_loaded = False
+        self._cache_time: float = 0.0
+        self._initialized = True
 
     @classmethod
-    def get_instance(cls) -> "UserSettingsService":
+    def get_instance(cls, sheets_service: Optional[SheetsService] = None) -> "UserSettingsService":
         if cls._instance is None:
-            cls._instance = cls()
+            cls._instance = cls(sheets_service)
         return cls._instance
 
     def _get_default_config(self) -> Dict[str, Any]:
@@ -36,10 +49,13 @@ class UserSettingsService:
             "targets": get_default_targets(),
         }
 
-    async def reload_cache(self) -> None:
+    async def reload_cache(self, force: bool = False) -> None:
         """Fetch all user settings from sheets into cache."""
+        now = time.time()
+        if not force and self._cache_loaded and (now - self._cache_time < 120):
+            return
         try:
-            records = await self.sheets.get_all_user_settings()
+            records = await self.sheets.get_all_user_settings(force_refresh=force)
             self._cache.clear()
             for r in records:
                 uid = str(r.get("Telegram User ID", "")).strip()
@@ -71,6 +87,7 @@ class UserSettingsService:
                     "targets": targets,
                 }
             self._cache_loaded = True
+            self._cache_time = now
             logger.info("Loaded settings for %d users into cache.", len(self._cache))
         except Exception as e:
             logger.error("Failed to load user settings from sheets: %s", e)
@@ -78,7 +95,7 @@ class UserSettingsService:
     async def get_user_settings(self, user_id: int) -> Dict[str, Any]:
         """Get settings for a user, returning default if not configured yet."""
         uid_str = str(user_id).strip()
-        if not self._cache_loaded:
+        if not self._cache_loaded or (time.time() - self._cache_time > 180):
             await self.reload_cache()
 
         if uid_str in self._cache:

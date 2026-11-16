@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import asyncio
+import time
 from typing import Dict, List, Optional, Any
 import gspread
 from gspread.utils import rowcol_to_a1
@@ -112,6 +113,47 @@ class SheetsService:
         self._mapping_worksheet: Optional[gspread.Worksheet] = None
         self._lock = asyncio.Lock()
 
+        # In-memory TTL caches
+        self._members_cache: Optional[List[Dict[str, Any]]] = None
+        self._members_cache_time: float = 0.0
+
+        self._mutabaah_cache: Optional[List[Dict[str, Any]]] = None
+        self._mutabaah_cache_time: float = 0.0
+
+        self._settings_cache: Optional[List[Dict[str, Any]]] = None
+        self._settings_cache_time: float = 0.0
+
+        self._mapping_cache: Optional[List[Dict[str, Any]]] = None
+        self._mapping_cache_time: float = 0.0
+
+        # Cache TTL durations in seconds
+        self.MUTABAAH_CACHE_TTL = 45.0   # 45 seconds
+        self.MEMBERS_CACHE_TTL = 180.0   # 3 minutes
+        self.SETTINGS_CACHE_TTL = 180.0  # 3 minutes
+        self.MAPPING_CACHE_TTL = 180.0   # 3 minutes
+
+    def invalidate_mutabaah_cache(self):
+        self._mutabaah_cache = None
+        self._mutabaah_cache_time = 0.0
+
+    def invalidate_members_cache(self):
+        self._members_cache = None
+        self._members_cache_time = 0.0
+
+    def invalidate_settings_cache(self):
+        self._settings_cache = None
+        self._settings_cache_time = 0.0
+
+    def invalidate_mapping_cache(self):
+        self._mapping_cache = None
+        self._mapping_cache_time = 0.0
+
+    def invalidate_all_caches(self):
+        self.invalidate_mutabaah_cache()
+        self.invalidate_members_cache()
+        self.invalidate_settings_cache()
+        self.invalidate_mapping_cache()
+
     @classmethod
     def get_instance(cls) -> "SheetsService":
         if cls._instance is None:
@@ -214,10 +256,16 @@ class SheetsService:
     # MEMBERS METHODS
     # -------------------------------------------------------------
 
-    def _get_all_members_sync(self) -> List[Dict[str, Any]]:
+    def _get_all_members_sync(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        now = time.time()
+        if not force_refresh and self._members_cache is not None and (now - self._members_cache_time < self.MEMBERS_CACHE_TTL):
+            return self._members_cache
+
         self._connect_sync()
         rows = self._members_worksheet.get_all_values()
         if len(rows) <= 1:
+            self._members_cache = []
+            self._members_cache_time = now
             return []
         headers = rows[0]
         result = []
@@ -226,10 +274,12 @@ class SheetsService:
             for col_idx, header in enumerate(headers):
                 record[header] = row[col_idx] if col_idx < len(row) else ""
             result.append(record)
+        self._members_cache = result
+        self._members_cache_time = now
         return result
 
-    async def get_all_members(self) -> List[Dict[str, Any]]:
-        return await asyncio.to_thread(self._get_all_members_sync)
+    async def get_all_members(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        return await asyncio.to_thread(self._get_all_members_sync, force_refresh)
 
     def _find_member_sync(self, user_id: int) -> Optional[Dict[str, Any]]:
         members = self._get_all_members_sync()
@@ -260,11 +310,13 @@ class SheetsService:
                     "TRUE",
                 ]
                 self._members_worksheet.update(f"A{idx}:E{idx}", [updated_row])
+                self.invalidate_members_cache()
                 return True
 
         # Append new member
         new_row = [str_user_id, username, full_name, registration_date, "TRUE"]
         self._members_worksheet.append_row(new_row, value_input_option="USER_ENTERED")
+        self.invalidate_members_cache()
         return True
 
     async def register_member(
@@ -321,6 +373,8 @@ class SheetsService:
         except Exception as e:
             logger.warning("Could not batch update mutabaah rows with new full name: %s", e)
 
+        self.invalidate_members_cache()
+        self.invalidate_mutabaah_cache()
         return True
 
     async def update_member_name(
@@ -449,6 +503,7 @@ class SheetsService:
             self._mutabaah_worksheet.append_row(new_row, value_input_option="USER_ENTERED")
             logger.info("Appended new mutabaah row for user %s on %s", str_user_id, target_date)
 
+        self.invalidate_mutabaah_cache()
         return True
 
     async def upsert_mutabaah(self, data: Dict[str, Any]) -> bool:
@@ -457,22 +512,14 @@ class SheetsService:
     def _get_user_mutabaah_record_sync(
         self, user_id: int, date_str: str
     ) -> Optional[Dict[str, Any]]:
-        self._connect_sync()
-        rows = self._mutabaah_worksheet.get_all_values()
+        # High speed in-memory search using cached rows
+        rows = self._get_all_mutabaah_rows_sync()
         str_user_id = str(user_id).strip()
         target_date = str(date_str).strip()
 
-        if len(rows) <= 1:
-            return None
-
-        headers = rows[0]
-        for row in rows[1:]:
-            if len(row) >= 2:
-                if str(row[0]).strip() == target_date and str(row[1]).strip() == str_user_id:
-                    record = {}
-                    for c_idx, h in enumerate(headers):
-                        record[h] = row[c_idx] if c_idx < len(row) else ""
-                    return record
+        for r in rows:
+            if str(r.get("Date", "")).strip() == target_date and str(r.get("Telegram User ID", "")).strip() == str_user_id:
+                return r
         return None
 
     async def get_user_mutabaah_record(
@@ -480,10 +527,16 @@ class SheetsService:
     ) -> Optional[Dict[str, Any]]:
         return await asyncio.to_thread(self._get_user_mutabaah_record_sync, user_id, date_str)
 
-    def _get_all_mutabaah_rows_sync(self) -> List[Dict[str, Any]]:
+    def _get_all_mutabaah_rows_sync(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        now = time.time()
+        if not force_refresh and self._mutabaah_cache is not None and (now - self._mutabaah_cache_time < self.MUTABAAH_CACHE_TTL):
+            return self._mutabaah_cache
+
         self._connect_sync()
         rows = self._mutabaah_worksheet.get_all_values()
         if len(rows) <= 1:
+            self._mutabaah_cache = []
+            self._mutabaah_cache_time = now
             return []
         headers = rows[0]
         result = []
@@ -492,21 +545,31 @@ class SheetsService:
             for c_idx, h in enumerate(headers):
                 record[h] = row[c_idx] if c_idx < len(row) else ""
             result.append(record)
+        self._mutabaah_cache = result
+        self._mutabaah_cache_time = now
         return result
 
-    async def get_all_mutabaah_rows(self) -> List[Dict[str, Any]]:
-        return await asyncio.to_thread(self._get_all_mutabaah_rows_sync)
+    async def get_all_mutabaah_rows(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        return await asyncio.to_thread(self._get_all_mutabaah_rows_sync, force_refresh)
 
     # -------------------------------------------------------------
     # USER SETTINGS METHODS
     # -------------------------------------------------------------
 
-    def _get_all_user_settings_sync(self) -> List[Dict[str, Any]]:
+    def _get_all_user_settings_sync(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        now = time.time()
+        if not force_refresh and self._settings_cache is not None and (now - self._settings_cache_time < self.SETTINGS_CACHE_TTL):
+            return self._settings_cache
+
         self._connect_sync()
         if self._settings_worksheet is None:
+            self._settings_cache = []
+            self._settings_cache_time = now
             return []
         rows = self._settings_worksheet.get_all_values()
         if len(rows) <= 1:
+            self._settings_cache = []
+            self._settings_cache_time = now
             return []
         headers = rows[0]
         result = []
@@ -515,10 +578,12 @@ class SheetsService:
             for col_idx, h in enumerate(headers):
                 record[h] = row[col_idx] if col_idx < len(row) else ""
             result.append(record)
+        self._settings_cache = result
+        self._settings_cache_time = now
         return result
 
-    async def get_all_user_settings(self) -> List[Dict[str, Any]]:
-        return await asyncio.to_thread(self._get_all_user_settings_sync)
+    async def get_all_user_settings(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        return await asyncio.to_thread(self._get_all_user_settings_sync, force_refresh)
 
     def _get_user_settings_sync(self, user_id: int) -> Optional[Dict[str, Any]]:
         records = self._get_all_user_settings_sync()
@@ -592,6 +657,7 @@ class SheetsService:
             self._settings_worksheet.append_row(new_row, value_input_option="USER_ENTERED")
             logger.info("Appended new user settings for user %s", str_user_id)
 
+        self.invalidate_settings_cache()
         return True
 
     async def save_user_settings(self, payload: Dict[str, Any]) -> bool:
@@ -784,12 +850,20 @@ class SheetsService:
     # MAPPING WORKSHEET METHODS
     # -------------------------------------------------------------
 
-    def _get_all_mapping_rows_sync(self) -> List[Dict[str, Any]]:
+    def _get_all_mapping_rows_sync(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        now = time.time()
+        if not force_refresh and self._mapping_cache is not None and (now - self._mapping_cache_time < self.MAPPING_CACHE_TTL):
+            return self._mapping_cache
+
         self._connect_sync()
         if self._mapping_worksheet is None:
+            self._mapping_cache = []
+            self._mapping_cache_time = now
             return []
         rows = self._mapping_worksheet.get_all_values()
         if len(rows) <= 1:
+            self._mapping_cache = []
+            self._mapping_cache_time = now
             return []
 
         curr_murobbi_id = ""
@@ -815,7 +889,9 @@ class SheetsService:
                     "mutarabbi_name": mut_name,
                     "kelompok": kelompok,
                 })
+        self._mapping_cache = result
+        self._mapping_cache_time = now
         return result
 
-    async def get_all_mapping_rows(self) -> List[Dict[str, Any]]:
-        return await asyncio.to_thread(self._get_all_mapping_rows_sync)
+    async def get_all_mapping_rows(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        return await asyncio.to_thread(self._get_all_mapping_rows_sync, force_refresh)

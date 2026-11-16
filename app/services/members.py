@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Dict, List, Optional
 from app.services.sheets import SheetsService
 from app.utils.datetime import get_today_str
@@ -8,22 +9,46 @@ logger = logging.getLogger(__name__)
 
 
 class MembersService:
+    _instance: Optional["MembersService"] = None
+
+    def __new__(cls, sheets_service: Optional[SheetsService] = None):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self, sheets_service: Optional[SheetsService] = None):
+        if getattr(self, "_initialized", False):
+            if sheets_service and sheets_service is not self.sheets:
+                self.sheets = sheets_service
+            return
         self.sheets = sheets_service or SheetsService.get_instance()
         # In-memory cache of registered members: {user_id_str: member_dict}
         self._cache: Dict[str, Dict] = {}
         self._cache_loaded = False
+        self._cache_time: float = 0.0
+        self._initialized = True
 
-    async def reload_cache(self) -> None:
+    @classmethod
+    def get_instance(cls, sheets_service: Optional[SheetsService] = None) -> "MembersService":
+        if cls._instance is None:
+            cls._instance = cls(sheets_service)
+        return cls._instance
+
+    async def reload_cache(self, force: bool = False) -> None:
         """Fetch all members from sheets and populate cache."""
+        now = time.time()
+        if not force and self._cache_loaded and (now - self._cache_time < 120):
+            return
         try:
-            members = await self.sheets.get_all_members()
+            members = await self.sheets.get_all_members(force_refresh=force)
             self._cache.clear()
             for m in members:
                 uid = str(m.get("Telegram User ID", "")).strip()
                 if uid:
                     self._cache[uid] = m
             self._cache_loaded = True
+            self._cache_time = now
             logger.info("Loaded %d members into cache.", len(self._cache))
         except Exception as e:
             logger.error("Failed to load members from Google Sheets: %s", e)
@@ -31,7 +56,7 @@ class MembersService:
     async def get_member(self, user_id: int) -> Optional[Dict]:
         """Get member info if registered."""
         uid_str = str(user_id)
-        if not self._cache_loaded:
+        if not self._cache_loaded or (time.time() - self._cache_time > 180):
             await self.reload_cache()
 
         if uid_str in self._cache:
@@ -90,7 +115,7 @@ class MembersService:
                 if formatted_username:
                     self._cache[uid_str]["Telegram Username"] = formatted_username
             else:
-                await self.reload_cache()
+                await self.reload_cache(force=True)
         return success
 
 

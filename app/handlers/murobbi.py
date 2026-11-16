@@ -63,7 +63,9 @@ async def show_binaan_list(
     """Show list of all binaan for the Murobbi."""
     mapping_service = MappingService.get_instance()
     if is_refresh:
-        await mapping_service.reload_cache()
+        from app.services.sheets import SheetsService
+        SheetsService.get_instance().invalidate_mutabaah_cache()
+        await mapping_service.reload_cache(force=True)
 
     try:
         overview = await mapping_service.get_binaan_overview(murobbi_id)

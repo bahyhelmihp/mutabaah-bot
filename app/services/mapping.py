@@ -32,11 +32,11 @@ class MappingService:
             cls._instance = cls()
         return cls._instance
 
-    async def reload_cache(self) -> None:
+    async def reload_cache(self, force: bool = False) -> None:
         """Fetch all mapping rows from Google Sheets and build cache."""
         async with self._lock:
             try:
-                rows = await self.sheets.get_all_mapping_rows()
+                rows = await self.sheets.get_all_mapping_rows(force_refresh=force)
                 new_murobbi_ids: Set[str] = set()
                 new_murobbi_names: Dict[str, str] = {}
                 new_murobbi_binaan: Dict[str, List[Dict[str, str]]] = {}
