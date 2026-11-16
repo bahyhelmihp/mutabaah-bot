@@ -5,6 +5,7 @@ ConversationHandler for Mutabaah workflow supporting:
 3. Single Amalan Entry (fill or edit one habit at a time)
 """
 import logging
+import asyncio
 from typing import Dict, Any, List, Optional
 from telegram import Update
 from telegram.ext import (
