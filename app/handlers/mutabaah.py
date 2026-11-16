@@ -446,12 +446,9 @@ async def handle_single_input(update: Update, context: ContextTypes.DEFAULT_TYPE
     data[key] = val
     data["timestamp"] = get_timestamp_str(Config.TIMEZONE)
 
-    # Immediately save to Google Sheets!
+    # Immediately queue save to Google Sheets in background!
     sheets_service = SheetsService.get_instance()
-    try:
-        await sheets_service.upsert_mutabaah(data)
-    except Exception as e:
-        logger.error("Failed to save single amalan %s to sheets: %s", key, e)
+    sheets_service.queue_upsert_mutabaah(data)
 
     formatted_val = format_amalan_value(key, val)
     icon = defn.get("icon", "")
@@ -633,36 +630,31 @@ async def handle_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE
         return await show_dashboard(update, context)
 
     if cb == "save":
-        await update.callback_query.edit_message_text(
-            "⏳ *Menyimpan ke Google Sheets...*",
-            parse_mode="Markdown",
-        )
-
         data = context.user_data.get("mutabaah", {})
         data["timestamp"] = get_timestamp_str(Config.TIMEZONE)
         date_label = format_date_id(date_str=data.get("date"), tz_name=Config.TIMEZONE)
 
+        # Queue background save with immediate local cache update
         sheets_service = SheetsService.get_instance()
+        sheets_service.queue_upsert_mutabaah(data)
+
+        success_text = (
+            "✅ *Alhamdulillah!*\n"
+            f"Mutabaah amalan yaumiyah tanggal *{date_label}* berhasil disimpan ke Google Sheets.\n\n"
+            "Semoga Allah memberkahi ikhtiar dan istiqomah kita semua! 🤲"
+        )
+        markup = await get_user_main_menu_keyboard(update.effective_user.id) if update.effective_user else get_main_menu_keyboard()
         try:
-            await sheets_service.upsert_mutabaah(data)
-            success_text = (
-                "✅ *Alhamdulillah!*\n"
-                f"Mutabaah amalan yaumiyah tanggal *{date_label}* berhasil disimpan ke Google Sheets.\n\n"
-                "Semoga Allah memberkahi ikhtiar dan istiqomah kita semua! 🤲"
-            )
-            markup = await get_user_main_menu_keyboard(update.effective_user.id) if update.effective_user else get_main_menu_keyboard()
-            await update.callback_query.message.reply_text(
+            await update.callback_query.edit_message_text(
                 success_text,
                 reply_markup=markup,
                 parse_mode="Markdown",
             )
-        except Exception as e:
-            logger.error("Failed to save mutabaah to Google Sheets: %s", e)
-            markup = await get_user_main_menu_keyboard(update.effective_user.id) if update.effective_user else get_main_menu_keyboard()
+        except Exception:
             await update.callback_query.message.reply_text(
-                "⚠️ Maaf, terjadi kesalahan saat menyimpan ke Google Sheets.\n"
-                "Silakan coba sesaat lagi dengan /isi atau hubungi admin.",
+                success_text,
                 reply_markup=markup,
+                parse_mode="Markdown",
             )
 
         context.user_data.pop("mutabaah", None)

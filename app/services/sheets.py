@@ -3,7 +3,7 @@ import json
 import logging
 import asyncio
 import time
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set, Tuple
 import gspread
 from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
@@ -119,6 +119,11 @@ class SheetsService:
 
         self._mutabaah_cache: Optional[List[Dict[str, Any]]] = None
         self._mutabaah_cache_time: float = 0.0
+
+        # Pending background saves overlay (key: (date_str, user_id_str))
+        self._pending_mutabaah: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        self._background_tasks: Set[asyncio.Task] = set()
+        self._mutabaah_write_lock: Optional[asyncio.Lock] = None
 
         self._settings_cache: Optional[List[Dict[str, Any]]] = None
         self._settings_cache_time: float = 0.0
@@ -389,35 +394,22 @@ class SheetsService:
     # DAILY MUTABAAH METHODS
     # -------------------------------------------------------------
 
-    def _upsert_mutabaah_sync(self, data: Dict[str, Any]) -> bool:
-        """
-        Upsert a mutabaah submission for a given date and user_id.
-        Supports both full submissions and single-amalan updates while preserving
-        existing values.
-        """
-        self._connect_sync()
-        rows = self._mutabaah_worksheet.get_all_values()
-        headers = rows[0] if rows else MUTABAAH_COLUMNS
+    def _get_write_lock(self) -> asyncio.Lock:
+        if self._mutabaah_write_lock is None:
+            self._mutabaah_write_lock = asyncio.Lock()
+        return self._mutabaah_write_lock
+
+    def _build_mutabaah_row_dict(
+        self, data: Dict[str, Any], existing_row_data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        existing = existing_row_data or {}
         str_user_id = str(data["user_id"]).strip()
         target_date = str(data["date"]).strip()
 
-        row_index_to_update = None
-        existing_row_data: Dict[str, Any] = {}
-        existing_submission_time = data.get("timestamp", get_timestamp_str(Config.TIMEZONE))
+        existing_submission_time = existing.get("Submission Time")
+        if not existing_submission_time:
+            existing_submission_time = data.get("timestamp", get_timestamp_str(Config.TIMEZONE))
 
-        for idx, row in enumerate(rows[1:], start=2):
-            if len(row) >= 2:
-                row_date = str(row[0]).strip()
-                row_uid = str(row[1]).strip()
-                if row_date == target_date and row_uid == str_user_id:
-                    row_index_to_update = idx
-                    for col_idx, h in enumerate(headers):
-                        existing_row_data[h] = row[col_idx] if col_idx < len(row) else ""
-                    if "Submission Time" in existing_row_data and existing_row_data["Submission Time"]:
-                        existing_submission_time = existing_row_data["Submission Time"]
-                    break
-
-        # Helper to get field value, defaulting to existing row value if not provided in data
         def get_int_val(key: str, col_name: str) -> Any:
             if key in data:
                 val = data[key]
@@ -427,8 +419,8 @@ class SheetsService:
                     return int(val)
                 except (ValueError, TypeError):
                     return 0
-            if col_name in existing_row_data:
-                raw = str(existing_row_data[col_name]).strip()
+            if col_name in existing:
+                raw = str(existing[col_name]).strip()
                 if raw.lower() in ["berhalangan", "haid", "halangan"]:
                     return "Berhalangan"
                 if raw.upper() in ["TRUE", "1", "YES", "YA"]:
@@ -445,54 +437,60 @@ class SheetsService:
                 if isinstance(val, bool):
                     return "TRUE" if val else "FALSE"
                 return "TRUE" if str(val).strip().upper() in ["TRUE", "1", "YES", "YA"] else "FALSE"
-            if col_name in existing_row_data:
-                existing_val = str(existing_row_data[col_name]).strip().upper()
+            if col_name in existing:
+                existing_val = str(existing[col_name]).strip().upper()
                 return "TRUE" if existing_val in ["TRUE", "1", "YES", "YA"] else "FALSE"
             return "FALSE"
 
-        new_row = []
-        for h in headers:
-            if h == "Date":
-                new_row.append(target_date)
-            elif h == "Telegram User ID":
-                new_row.append(str_user_id)
-            elif h == "Telegram Username":
-                new_row.append(data.get("username", existing_row_data.get("Telegram Username", "")))
-            elif h == "Full Name":
-                new_row.append(data.get("full_name", existing_row_data.get("Full Name", "")))
-            elif h == "Tilawah Pages":
-                new_row.append(get_int_val("tilawah", "Tilawah Pages"))
-            elif h == "Sholat Wajib":
-                new_row.append(get_int_val("sholat_wajib", "Sholat Wajib"))
-            elif h == "Rawatib Rakaat":
-                new_row.append(get_int_val("rawatib", "Rawatib Rakaat"))
-            elif h == "Almatsurat":
-                new_row.append(get_int_val("almatsurat", "Almatsurat"))
-            elif h == "Shalawat":
-                new_row.append(get_int_val("shalawat", "Shalawat"))
-            elif h == "Istighfar":
-                new_row.append(get_int_val("istighfar", "Istighfar"))
-            elif h == "Tadabbur Ayat":
-                new_row.append(get_int_val("tadabbur", "Tadabbur Ayat"))
-            elif h == "Shaum Sunnah":
-                new_row.append(get_bool_val("shaum_sunnah", "Shaum Sunnah"))
-            elif h == "Qiyamulail":
-                new_row.append(get_bool_val("qiyamulail", "Qiyamulail"))
-            elif h == "Dhuha":
-                new_row.append(get_bool_val("dhuha", "Dhuha"))
-            elif h == "Olahraga":
-                new_row.append(get_int_val("olahraga", "Olahraga"))
-            elif h == "Silaturahim":
-                new_row.append(get_bool_val("silaturahim", "Silaturahim"))
-            elif h == "Doa Ummat Islam":
-                new_row.append(get_int_val("doa_ummat_islam", "Doa Ummat Islam"))
-            elif h == "Submission Time":
-                new_row.append(existing_submission_time)
-            elif h == "Last Updated":
-                new_row.append(data.get("timestamp", get_timestamp_str(Config.TIMEZONE)))
-            else:
-                # Any unknown custom column
-                new_row.append(data.get(h, existing_row_data.get(h, "")))
+        return {
+            "Date": target_date,
+            "Telegram User ID": str_user_id,
+            "Telegram Username": data.get("username", existing.get("Telegram Username", "")),
+            "Full Name": data.get("full_name", existing.get("Full Name", "")),
+            "Tilawah Pages": get_int_val("tilawah", "Tilawah Pages"),
+            "Sholat Wajib": get_int_val("sholat_wajib", "Sholat Wajib"),
+            "Rawatib Rakaat": get_int_val("rawatib", "Rawatib Rakaat"),
+            "Almatsurat": get_int_val("almatsurat", "Almatsurat"),
+            "Shalawat": get_int_val("shalawat", "Shalawat"),
+            "Istighfar": get_int_val("istighfar", "Istighfar"),
+            "Tadabbur Ayat": get_int_val("tadabbur", "Tadabbur Ayat"),
+            "Shaum Sunnah": get_bool_val("shaum_sunnah", "Shaum Sunnah"),
+            "Qiyamulail": get_bool_val("qiyamulail", "Qiyamulail"),
+            "Dhuha": get_bool_val("dhuha", "Dhuha"),
+            "Olahraga": get_int_val("olahraga", "Olahraga"),
+            "Silaturahim": get_bool_val("silaturahim", "Silaturahim"),
+            "Doa Ummat Islam": get_int_val("doa_ummat_islam", "Doa Ummat Islam"),
+            "Submission Time": existing_submission_time,
+            "Last Updated": data.get("timestamp", get_timestamp_str(Config.TIMEZONE)),
+        }
+
+    def _upsert_mutabaah_sync(self, data: Dict[str, Any]) -> bool:
+        """
+        Upsert a mutabaah submission for a given date and user_id.
+        Supports both full submissions and single-amalan updates while preserving
+        existing values.
+        """
+        self._connect_sync()
+        rows = self._mutabaah_worksheet.get_all_values()
+        headers = rows[0] if rows else MUTABAAH_COLUMNS
+        str_user_id = str(data["user_id"]).strip()
+        target_date = str(data["date"]).strip()
+
+        row_index_to_update = None
+        existing_row_data: Dict[str, Any] = {}
+
+        for idx, row in enumerate(rows[1:], start=2):
+            if len(row) >= 2:
+                row_date = str(row[0]).strip()
+                row_uid = str(row[1]).strip()
+                if row_date == target_date and row_uid == str_user_id:
+                    row_index_to_update = idx
+                    for col_idx, h in enumerate(headers):
+                        existing_row_data[h] = row[col_idx] if col_idx < len(row) else ""
+                    break
+
+        row_dict = self._build_mutabaah_row_dict(data, existing_row_data)
+        new_row = [row_dict.get(h, "") for h in headers]
 
         if row_index_to_update:
             end_cell = rowcol_to_a1(row_index_to_update, len(new_row))
@@ -503,8 +501,119 @@ class SheetsService:
             self._mutabaah_worksheet.append_row(new_row, value_input_option="USER_ENTERED")
             logger.info("Appended new mutabaah row for user %s on %s", str_user_id, target_date)
 
-        self.invalidate_mutabaah_cache()
+        # Update cache in place
+        if self._mutabaah_cache is not None:
+            updated = False
+            for idx, r in enumerate(self._mutabaah_cache):
+                if str(r.get("Date", "")).strip() == target_date and str(r.get("Telegram User ID", "")).strip() == str_user_id:
+                    self._mutabaah_cache[idx] = dict(row_dict)
+                    updated = True
+                    break
+            if not updated:
+                self._mutabaah_cache.append(dict(row_dict))
+            self._mutabaah_cache_time = time.time()
+
+        # Remove from pending queue
+        self._pending_mutabaah.pop((target_date, str_user_id), None)
         return True
+
+    def _apply_submission_to_cache(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Immediately updates in-memory cache and pending map with the new data.
+        Returns the constructed row dictionary.
+        """
+        str_user_id = str(data["user_id"]).strip()
+        target_date = str(data["date"]).strip()
+        key = (target_date, str_user_id)
+
+        # Check existing row in pending or cache
+        existing_row = self._pending_mutabaah.get(key)
+        if not existing_row and self._mutabaah_cache is not None:
+            for r in self._mutabaah_cache:
+                if str(r.get("Date", "")).strip() == target_date and str(r.get("Telegram User ID", "")).strip() == str_user_id:
+                    existing_row = r
+                    break
+
+        new_row_dict = self._build_mutabaah_row_dict(data, existing_row)
+        self._pending_mutabaah[key] = new_row_dict
+
+        # If cache exists, update or append in place so reads are immediate
+        if self._mutabaah_cache is not None:
+            updated = False
+            for idx, r in enumerate(self._mutabaah_cache):
+                if str(r.get("Date", "")).strip() == target_date and str(r.get("Telegram User ID", "")).strip() == str_user_id:
+                    self._mutabaah_cache[idx] = dict(new_row_dict)
+                    updated = True
+                    break
+            if not updated:
+                self._mutabaah_cache.append(dict(new_row_dict))
+            self._mutabaah_cache_time = time.time()
+
+        return new_row_dict
+
+    async def _background_save_worker(
+        self, data: Dict[str, Any], max_retries: int = 3, retry_delay: float = 2.0
+    ):
+        str_user_id = str(data["user_id"]).strip()
+        target_date = str(data["date"]).strip()
+        key = (target_date, str_user_id)
+
+        lock = self._get_write_lock()
+        async with lock:
+            for attempt in range(1, max_retries + 1):
+                try:
+                    await asyncio.to_thread(self._upsert_mutabaah_sync, data)
+                    logger.info(
+                        "Background save to Google Sheets succeeded for user %s on %s (attempt %d/%d)",
+                        str_user_id,
+                        target_date,
+                        attempt,
+                        max_retries,
+                    )
+                    self._pending_mutabaah.pop(key, None)
+                    return True
+                except Exception as exc:
+                    logger.warning(
+                        "Background save attempt %d/%d failed for user %s on %s: %s",
+                        attempt,
+                        max_retries,
+                        str_user_id,
+                        target_date,
+                        exc,
+                    )
+                    if attempt < max_retries:
+                        await asyncio.sleep(retry_delay * attempt)
+                    else:
+                        logger.error(
+                            "Background save permanently failed after %d attempts for user %s on %s: %s",
+                            max_retries,
+                            str_user_id,
+                            target_date,
+                            exc,
+                        )
+                        return False
+
+    def queue_upsert_mutabaah(self, data: Dict[str, Any]) -> asyncio.Task:
+        """
+        Immediately updates in-memory cache and dispatches background write
+        to Google Sheets with automatic retries.
+        """
+        data_copy = dict(data)
+        # 1. Update cache synchronously for 0ms read latency
+        self._apply_submission_to_cache(data_copy)
+
+        # 2. Schedule async background worker
+        task = asyncio.create_task(self._background_save_worker(data_copy))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        return task
+
+    async def wait_all_background_tasks(self, timeout: float = 30.0):
+        """Awaits all currently pending background write tasks."""
+        if not self._background_tasks:
+            return
+        tasks = list(self._background_tasks)
+        await asyncio.wait(tasks, timeout=timeout)
 
     async def upsert_mutabaah(self, data: Dict[str, Any]) -> bool:
         return await asyncio.to_thread(self._upsert_mutabaah_sync, data)
@@ -530,23 +639,37 @@ class SheetsService:
     def _get_all_mutabaah_rows_sync(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
         now = time.time()
         if not force_refresh and self._mutabaah_cache is not None and (now - self._mutabaah_cache_time < self.MUTABAAH_CACHE_TTL):
-            return self._mutabaah_cache
-
-        self._connect_sync()
-        rows = self._mutabaah_worksheet.get_all_values()
-        if len(rows) <= 1:
-            self._mutabaah_cache = []
+            result = [dict(r) for r in self._mutabaah_cache]
+        else:
+            self._connect_sync()
+            rows = self._mutabaah_worksheet.get_all_values()
+            if len(rows) <= 1:
+                result = []
+            else:
+                headers = rows[0]
+                result = []
+                for row in rows[1:]:
+                    record = {}
+                    for c_idx, h in enumerate(headers):
+                        record[h] = row[c_idx] if c_idx < len(row) else ""
+                    result.append(record)
+            self._mutabaah_cache = [dict(r) for r in result]
             self._mutabaah_cache_time = now
-            return []
-        headers = rows[0]
-        result = []
-        for row in rows[1:]:
-            record = {}
-            for c_idx, h in enumerate(headers):
-                record[h] = row[c_idx] if c_idx < len(row) else ""
-            result.append(record)
-        self._mutabaah_cache = result
-        self._mutabaah_cache_time = now
+
+        # Overlay any pending mutabaah writes that are still in flight
+        if self._pending_mutabaah:
+            key_to_idx = {
+                (str(r.get("Date", "")).strip(), str(r.get("Telegram User ID", "")).strip()): idx
+                for idx, r in enumerate(result)
+            }
+            for (p_date, p_uid), p_dict in self._pending_mutabaah.items():
+                k = (str(p_date).strip(), str(p_uid).strip())
+                if k in key_to_idx:
+                    result[key_to_idx[k]] = dict(p_dict)
+                else:
+                    result.append(dict(p_dict))
+                    key_to_idx[k] = len(result) - 1
+
         return result
 
     async def get_all_mutabaah_rows(self, force_refresh: bool = False) -> List[Dict[str, Any]]:

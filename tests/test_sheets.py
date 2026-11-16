@@ -262,6 +262,72 @@ class TestSheetsUpsertLogic(unittest.TestCase):
         self.assertEqual(batch_args[0]["values"], [["New Valid Name"]])
 
 
+class TestAsyncBackgroundSaving(unittest.IsolatedAsyncioTestCase):
+    async def test_queue_upsert_mutabaah_immediate_cache_and_background_persist(self):
+        service = SheetsService()
+        mock_ws = MagicMock()
+        mock_ws.get_all_values.return_value = [MUTABAAH_COLUMNS]
+        service._mutabaah_worksheet = mock_ws
+        service._spreadsheet = MagicMock()
+
+        data = {
+            "date": "2026-11-16",
+            "user_id": 991122,
+            "username": "@speedy",
+            "full_name": "Speedy User",
+            "tilawah": 15,
+            "sholat_wajib": 5,
+            "rawatib": 10,
+        }
+
+        # Queue background save
+        task = service.queue_upsert_mutabaah(data)
+        self.assertIsNotNone(task)
+
+        # 1. Immediate read via get_user_mutabaah_record should see the record INSTANTLY (0ms)
+        instant_record = await service.get_user_mutabaah_record(991122, "2026-11-16")
+        self.assertIsNotNone(instant_record)
+        self.assertEqual(instant_record.get("Tilawah Pages"), 15)
+        self.assertEqual(instant_record.get("Sholat Wajib"), 5)
+
+        # 2. Await background persistence
+        await service.wait_all_background_tasks(timeout=5.0)
+
+        # 3. Google Sheets append_row must have been called
+        mock_ws.append_row.assert_called_once()
+        saved_args = mock_ws.append_row.call_args[0][0]
+        self.assertEqual(saved_args[MUTABAAH_COLUMNS.index("Telegram User ID")], "991122")
+        self.assertEqual(saved_args[MUTABAAH_COLUMNS.index("Tilawah Pages")], 15)
+
+    async def test_background_worker_retry_on_failure(self):
+        service = SheetsService()
+        mock_ws = MagicMock()
+        # Fail on attempt 1, succeed on attempt 2
+        call_count = 0
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("Temporary Google API network blip")
+            return [MUTABAAH_COLUMNS]
+
+        mock_ws.get_all_values.side_effect = side_effect
+        service._mutabaah_worksheet = mock_ws
+        service._spreadsheet = MagicMock()
+
+        data = {
+            "date": "2026-11-16",
+            "user_id": 887766,
+            "tilawah": 10,
+        }
+
+        # Run background worker with reduced retry delay for speed
+        success = await service._background_save_worker(data, max_retries=3, retry_delay=0.05)
+        self.assertTrue(success)
+        self.assertEqual(call_count, 2)
+        mock_ws.append_row.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
 
