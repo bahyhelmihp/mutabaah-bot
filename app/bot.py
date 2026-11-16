@@ -137,19 +137,19 @@ def create_application() -> Application:
 
     async def post_init(application: Application):
         try:
-            import asyncio
+            from app.services.sheets import SheetsService
             from app.services.mapping import MappingService
             from app.services.members import MembersService
             from app.services.settings import UserSettingsService
-            from app.services.sheets import SheetsService
-            logger.info("Pre-warming all in-memory caches...")
-            await asyncio.gather(
-                MappingService.get_instance().reload_cache(),
-                MembersService.get_instance().reload_cache(),
-                UserSettingsService.get_instance().reload_cache(),
-                SheetsService.get_instance().get_all_mutabaah_rows(),
-                return_exceptions=True,
-            )
+            logger.info("Connecting and pre-warming in-memory caches...")
+            sheets_svc = SheetsService.get_instance()
+            await sheets_svc.connect()
+
+            # Preload caches sequentially to avoid Google Sheets API rate limit burst
+            await MappingService.get_instance().reload_cache()
+            await MembersService.get_instance().reload_cache()
+            await UserSettingsService.get_instance().reload_cache()
+            await sheets_svc.get_all_mutabaah_rows()
             logger.info("All caches (Mapping, Members, Settings, Mutabaah) successfully preloaded.")
         except Exception as e:
             logger.warning("Failed to initialize caches on startup: %s", e)
