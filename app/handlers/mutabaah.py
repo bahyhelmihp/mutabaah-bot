@@ -25,6 +25,7 @@ from app.services.amalan import (
     ALL_AMALAN_KEYS,
     get_amalan_info,
     format_amalan_value,
+    get_default_targets,
 )
 from app.utils.datetime import (
     get_now,
