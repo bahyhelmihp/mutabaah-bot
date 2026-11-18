@@ -39,6 +39,101 @@ def _parse_int(val: Any, default: int = 0) -> int:
         return default
 
 
+def _calculate_row_scores(r: Dict[str, Any]) -> List[float]:
+    """Calculate normalized scores for a single submission row."""
+    scores = []
+    til_str = str(r.get("Tilawah Pages", "")).strip().lower()
+    if til_str not in ["berhalangan", "haid", "halangan"]:
+        scores.append(min(_parse_int(r.get("Tilawah Pages", 0)) / 20.0, 1.0))
+
+    waj_str = str(r.get("Sholat Wajib", "")).strip().lower()
+    if waj_str not in ["berhalangan", "haid", "halangan"]:
+        scores.append(min(_parse_int(r.get("Sholat Wajib", 0)) / 5.0, 1.0))
+
+    scores.append(min(_parse_int(r.get("Rawatib Rakaat", 0)) / 12.0, 1.0))
+    scores.append(min(_parse_int(r.get("Almatsurat", 0)) / 2.0, 1.0))
+    scores.append(min(_parse_int(r.get("Shalawat", 0)) / 100.0, 1.0))
+    scores.append(min(_parse_int(r.get("Istighfar", 0)) / 100.0, 1.0))
+    scores.append(min(_parse_int(r.get("Tadabbur Ayat", 0)) / 1.0, 1.0))
+    return scores
+
+
+def _extract_member_highlights(m: Dict[str, Any]) -> List[str]:
+    """Extract top 2-3 standout achievements for a member."""
+    days = max(1, m.get("days_submitted", 1))
+    achievements = []
+
+    # Tilawah
+    avg_til = m.get("total_tilawah", 0) / days
+    if avg_til >= 5.0:
+        achievements.append((avg_til / 20.0, f"📖 Tilawah {round(avg_til, 1)} hal/hari"))
+    elif m.get("total_tilawah", 0) > 0:
+        achievements.append((avg_til / 20.0, f"📖 Tilawah {m.get('total_tilawah')} hal"))
+
+    # Sholat Wajib
+    avg_waj = m.get("total_wajib", 0) / days
+    if avg_waj >= 4.0:
+        achievements.append((avg_waj / 5.0, f"🕌 Wajib {round(avg_waj, 1)}/5"))
+
+    # Rawatib
+    avg_raw = m.get("total_rawatib", 0) / days
+    if avg_raw >= 4.0:
+        achievements.append((avg_raw / 12.0, f"🌙 Rawatib {round(avg_raw, 1)} rkt"))
+
+    # Al-Ma'tsurat
+    avg_mat = m.get("total_almatsurat", 0) / days
+    if avg_mat >= 1.0:
+        achievements.append((avg_mat / 2.0, f"📿 Ma’tsurat {round(avg_mat, 1)}x"))
+
+    # Shalawat
+    avg_shal = m.get("total_shalawat", 0) / days
+    if avg_shal >= 50.0:
+        achievements.append((avg_shal / 100.0, f"🌸 Shalawat {int(avg_shal)}x"))
+
+    # Istighfar
+    avg_ist = m.get("total_istighfar", 0) / days
+    if avg_ist >= 50.0:
+        achievements.append((avg_ist / 100.0, f"🤲 Istighfar {int(avg_ist)}x"))
+
+    # Tadabbur
+    avg_tad = m.get("total_tadabbur", 0) / days
+    if avg_tad >= 1.0:
+        achievements.append((avg_tad / 1.0, f"📜 Tadabbur {round(avg_tad, 1)} ayat"))
+
+    # Qiyamulail
+    q_count = m.get("count_qiyam", 0)
+    if q_count >= 1:
+        achievements.append((q_count / days, f"🌃 Qiyam {q_count}x"))
+
+    # Dhuha
+    d_count = m.get("count_dhuha", 0)
+    if d_count >= 1:
+        achievements.append((d_count / days, f"☀️ Dhuha {d_count}x"))
+
+    # Shaum Sunnah
+    s_count = m.get("count_shaum", 0)
+    if s_count >= 1:
+        achievements.append((s_count * 3.0 / days, f"🍽️ Shaum {s_count} hari"))
+
+    # Olahraga (menit)
+    tot_ol = m.get("total_olahraga", 0)
+    if tot_ol >= 15:
+        achievements.append((tot_ol / 30.0, f"🏃 Olahraga {tot_ol} mnt"))
+
+    # Silaturahim
+    sil_count = m.get("count_silaturahim", 0)
+    if sil_count >= 1:
+        achievements.append((sil_count / days, f"🤝 Silaturahim {sil_count}x"))
+
+    # Doa Ummat
+    tot_doa = m.get("total_doa_ummat", 0)
+    if tot_doa >= 1:
+        achievements.append((tot_doa / days, f"🤲 Doa Ummat {tot_doa}x"))
+
+    achievements.sort(key=lambda x: x[0], reverse=True)
+    return [item[1] for item in achievements[:3]]
+
+
 class StatisticsService:
     def __init__(
         self,
@@ -457,21 +552,7 @@ class StatisticsService:
             total_score = 0.0
             valid_submission_count = 0
             for r in period_rows:
-                entry_scores = []
-                til_str = str(r.get("Tilawah Pages", "")).strip().lower()
-                if til_str not in ["berhalangan", "haid", "halangan"]:
-                    entry_scores.append(min(_parse_int(r.get("Tilawah Pages", 0)) / 20.0, 1.0))
-
-                waj_str = str(r.get("Sholat Wajib", "")).strip().lower()
-                if waj_str not in ["berhalangan", "haid", "halangan"]:
-                    entry_scores.append(min(_parse_int(r.get("Sholat Wajib", 0)) / 5.0, 1.0))
-
-                entry_scores.append(min(_parse_int(r.get("Rawatib Rakaat", 0)) / 12.0, 1.0))
-                entry_scores.append(min(_parse_int(r.get("Almatsurat", 0)) / 2.0, 1.0))
-                entry_scores.append(min(_parse_int(r.get("Shalawat", 0)) / 100.0, 1.0))
-                entry_scores.append(min(_parse_int(r.get("Istighfar", 0)) / 100.0, 1.0))
-                entry_scores.append(min(_parse_int(r.get("Tadabbur Ayat", 0)) / 1.0, 1.0))
-
+                entry_scores = _calculate_row_scores(r)
                 if entry_scores:
                     total_score += sum(entry_scores) / len(entry_scores)
                     valid_submission_count += 1
@@ -500,10 +581,12 @@ class StatisticsService:
                 "count_shaum": 0,
                 "count_qiyam": 0,
                 "count_dhuha": 0,
+                "total_olahraga": 0,
                 "count_olahraga": 0,
                 "count_silaturahim": 0,
                 "total_doa_ummat": 0,
                 "total_score": 0.0,
+                "highlights": [],
             }
 
         for r in period_rows:
@@ -524,10 +607,12 @@ class StatisticsService:
                     "count_shaum": 0,
                     "count_qiyam": 0,
                     "count_dhuha": 0,
+                    "total_olahraga": 0,
                     "count_olahraga": 0,
                     "count_silaturahim": 0,
                     "total_doa_ummat": 0,
                     "total_score": 0.0,
+                    "highlights": [],
                 }
             m_stat = member_map[uid]
             m_stat["days_submitted"] += 1
@@ -544,26 +629,20 @@ class StatisticsService:
                 m_stat["count_qiyam"] += 1
             if _parse_bool(r.get("Dhuha")):
                 m_stat["count_dhuha"] += 1
-            if _parse_bool(r.get("Olahraga")):
+            
+            ol_val = _parse_int(r.get("Olahraga", 0)) if not _parse_bool(r.get("Olahraga")) else 30
+            m_stat["total_olahraga"] += ol_val
+            if ol_val > 0 or _parse_bool(r.get("Olahraga")):
                 m_stat["count_olahraga"] += 1
+
             if _parse_bool(r.get("Silaturahim")):
                 m_stat["count_silaturahim"] += 1
             m_stat["total_doa_ummat"] += _parse_int(r.get("Doa Ummat Islam", 0))
 
-            # Score per row excluding berhalangan
-            m_scores = []
-            til_str = str(r.get("Tilawah Pages", "")).strip().lower()
-            if til_str not in ["berhalangan", "haid", "halangan"]:
-                m_scores.append(min(_parse_int(r.get("Tilawah Pages", 0)) / 20.0, 1.0))
-
-            waj_str = str(r.get("Sholat Wajib", "")).strip().lower()
-            if waj_str not in ["berhalangan", "haid", "halangan"]:
-                m_scores.append(min(_parse_int(r.get("Sholat Wajib", 0)) / 5.0, 1.0))
-
-            m_scores.append(min(_parse_int(r.get("Rawatib Rakaat", 0)) / 12.0, 1.0))
-            m_scores.append(min(_parse_int(r.get("Almatsurat", 0)) / 2.0, 1.0))
-            if m_scores:
-                m_stat["total_score"] += sum(m_scores) / len(m_scores)
+            # Unified scoring per row
+            row_scores = _calculate_row_scores(r)
+            if row_scores:
+                m_stat["total_score"] += sum(row_scores) / len(row_scores)
 
         member_breakdown = list(member_map.values())
         for m_stat in member_breakdown:
@@ -571,11 +650,79 @@ class StatisticsService:
             m_stat["avg_completion"] = (
                 round((m_stat["total_score"] / days) * 100, 1) if days > 0 else 0.0
             )
+            m_stat["highlights"] = _extract_member_highlights(m_stat)
 
         # Sort members by days submitted descending, then avg_completion descending
         member_breakdown.sort(
             key=lambda x: (x["days_submitted"], x["avg_completion"]), reverse=True
         )
+
+        active_submitted = [m for m in member_breakdown if m["days_submitted"] > 0]
+        if active_submitted:
+            comp_list = [m["avg_completion"] for m in active_submitted]
+            min_completion_rate = min(comp_list)
+            max_completion_rate = max(comp_list)
+
+            days_list = [m["days_submitted"] for m in active_submitted]
+            avg_days_submitted = round(sum(days_list) / len(days_list), 1)
+            min_days_submitted = min(days_list)
+            max_days_submitted = max(days_list)
+
+            til_list = [round(m["total_tilawah"] / m["days_submitted"], 1) for m in active_submitted]
+            min_tilawah = min(til_list)
+            max_tilawah = max(til_list)
+
+            waj_list = [round(m["total_wajib"] / m["days_submitted"], 1) for m in active_submitted]
+            min_wajib = min(waj_list)
+            max_wajib = max(waj_list)
+
+            raw_list = [round(m["total_rawatib"] / m["days_submitted"], 1) for m in active_submitted]
+            min_rawatib = min(raw_list)
+            max_rawatib = max(raw_list)
+
+            mat_list = [round(m["total_almatsurat"] / m["days_submitted"], 1) for m in active_submitted]
+            min_almatsurat = min(mat_list)
+            max_almatsurat = max(mat_list)
+
+            shal_list = [round(m["total_shalawat"] / m["days_submitted"], 1) for m in active_submitted]
+            min_shalawat = min(shal_list)
+            max_shalawat = max(shal_list)
+
+            ist_list = [round(m["total_istighfar"] / m["days_submitted"], 1) for m in active_submitted]
+            min_istighfar = min(ist_list)
+            max_istighfar = max(ist_list)
+
+            tad_list = [round(m["total_tadabbur"] / m["days_submitted"], 1) for m in active_submitted]
+            min_tadabbur = min(tad_list)
+            max_tadabbur = max(tad_list)
+
+            ol_list = [round(m["total_olahraga"] / m["days_submitted"], 1) for m in active_submitted]
+            min_olahraga = min(ol_list)
+            max_olahraga = max(ol_list)
+
+            doa_list = [round(m["total_doa_ummat"] / m["days_submitted"], 1) for m in active_submitted]
+            min_doa_ummat = min(doa_list)
+            max_doa_ummat = max(doa_list)
+        else:
+            min_completion_rate = 0.0
+            max_completion_rate = 0.0
+            avg_days_submitted = 0.0
+            min_days_submitted = 0
+            max_days_submitted = 0
+            min_tilawah = max_tilawah = 0.0
+            min_wajib = max_wajib = 0.0
+            min_rawatib = max_rawatib = 0.0
+            min_almatsurat = max_almatsurat = 0.0
+            min_shalawat = max_shalawat = 0.0
+            min_istighfar = max_istighfar = 0.0
+            min_tadabbur = max_tadabbur = 0.0
+            min_olahraga = max_olahraga = 0.0
+            min_doa_ummat = max_doa_ummat = 0.0
+
+        pct_shaum = round((count_shaum / n_entries) * 100, 1) if n_entries > 0 else 0.0
+        pct_qiyam = round((count_qiyam / n_entries) * 100, 1) if n_entries > 0 else 0.0
+        pct_dhuha = round((count_dhuha / n_entries) * 100, 1) if n_entries > 0 else 0.0
+        pct_silaturahim = round((count_silaturahim / n_entries) * 100, 1) if n_entries > 0 else 0.0
 
         return {
             "period_label": period_label,
@@ -591,29 +738,56 @@ class StatisticsService:
             "total_monthly_records": n_entries,  # backward compatibility
             "month_label": period_label,  # backward compatibility
             "average_completion_rate": avg_completion,
+            "min_completion_rate": min_completion_rate,
+            "max_completion_rate": max_completion_rate,
+            "avg_days_submitted": avg_days_submitted,
+            "min_days_submitted": min_days_submitted,
+            "max_days_submitted": max_days_submitted,
             "total_tilawah": total_tilawah,
             "avg_tilawah": avg_tilawah,
+            "min_tilawah": min_tilawah,
+            "max_tilawah": max_tilawah,
             "total_wajib": total_wajib,
             "avg_wajib": avg_wajib,
+            "min_wajib": min_wajib,
+            "max_wajib": max_wajib,
             "total_rawatib": total_rawatib,
             "avg_rawatib": avg_rawatib,
+            "min_rawatib": min_rawatib,
+            "max_rawatib": max_rawatib,
             "total_almatsurat": total_almatsurat,
             "avg_almatsurat": avg_almatsurat,
+            "min_almatsurat": min_almatsurat,
+            "max_almatsurat": max_almatsurat,
             "total_shalawat": total_shalawat,
             "avg_shalawat": avg_shalawat,
+            "min_shalawat": min_shalawat,
+            "max_shalawat": max_shalawat,
             "total_istighfar": total_istighfar,
             "avg_istighfar": avg_istighfar,
+            "min_istighfar": min_istighfar,
+            "max_istighfar": max_istighfar,
             "total_tadabbur": total_tadabbur,
             "avg_tadabbur": avg_tadabbur,
+            "min_tadabbur": min_tadabbur,
+            "max_tadabbur": max_tadabbur,
             "count_shaum": count_shaum,
+            "pct_shaum": pct_shaum,
             "count_qiyam": count_qiyam,
+            "pct_qiyam": pct_qiyam,
             "count_dhuha": count_dhuha,
+            "pct_dhuha": pct_dhuha,
             "count_olahraga": count_olahraga,
             "total_olahraga": total_olahraga,
             "avg_olahraga": avg_olahraga,
+            "min_olahraga": min_olahraga,
+            "max_olahraga": max_olahraga,
             "count_silaturahim": count_silaturahim,
+            "pct_silaturahim": pct_silaturahim,
             "total_doa_ummat": total_doa_ummat,
             "avg_doa_ummat": avg_doa_ummat,
+            "min_doa_ummat": min_doa_ummat,
+            "max_doa_ummat": max_doa_ummat,
             "member_breakdown": member_breakdown,
         }
 

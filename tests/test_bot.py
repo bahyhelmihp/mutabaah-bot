@@ -361,6 +361,20 @@ class TestStatisticsService(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stats["member_breakdown"][0]["user_id"], "111")
         self.assertEqual(stats["member_breakdown"][0]["count_silaturahim"], 1)
         self.assertEqual(stats["member_breakdown"][0]["total_doa_ummat"], 2)
+        self.assertEqual(stats["min_tilawah"], 10.0)
+        self.assertEqual(stats["max_tilawah"], 20.0)
+        self.assertEqual(stats["total_olahraga"], 30)
+        self.assertTrue(len(stats["member_breakdown"][0]["highlights"]) > 0)
+
+        # Test format_admin_stats_text output
+        from app.handlers.admin import format_admin_stats_text
+        formatted = format_admin_stats_text(stats)
+        self.assertIn("Olahraga:", formatted)
+        self.assertIn("mnt", formatted)
+        self.assertNotIn("805 hari", formatted)
+        self.assertIn("Rentang:", formatted)
+        self.assertIn("Top 3 Anggota Terajin", formatted)
+        self.assertIn("Unggul di:", formatted)
 
 
 class TestDatePresetsAndCustomParser(unittest.TestCase):

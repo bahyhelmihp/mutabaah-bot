@@ -35,29 +35,32 @@ def format_admin_stats_text(stats: Dict[str, Any]) -> str:
     end_date = stats.get("end_date", "")
 
     date_range_str = f"_{start_date} s/d {end_date}_" if start_date != end_date else f"_{start_date}_"
+    n_entries = stats.get("total_submissions", 0)
 
     lines = [
         f"📊 *Statistik Mutabaah: {period_label}*",
         f"{date_range_str}\n",
-        f"👥 *Total Anggota Terdaftar:* {stats.get('registered_members', 0)} orang",
-        f"📝 *Anggota Mengisi Periode Ini:* {stats.get('active_submitters', 0)} orang",
-        f"📈 *Tingkat Keaktifan:* {stats.get('submission_rate', 0.0)}%",
-        f"📋 *Total Entri Pengisian:* {stats.get('total_submissions', 0)} data",
-        f"⭐ *Rata-rata Capaian Target:* {stats.get('average_completion_rate', 0.0)}%\n",
-        "📌 *Rata-rata Amalan per Pengisian:*",
-        f"• 📖 Tilawah: *{stats.get('avg_tilawah', 0.0)} hal* (Total: {stats.get('total_tilawah', 0)})",
-        f"• 🕌 Sholat Wajib: *{stats.get('avg_wajib', 0.0)} waktu* (Total: {stats.get('total_wajib', 0)})",
-        f"• 🌙 Rawatib: *{stats.get('avg_rawatib', 0.0)} rakaat* (Total: {stats.get('total_rawatib', 0)})",
-        f"• 📿 Al-Ma’tsurat: *{stats.get('avg_almatsurat', 0.0)}x* (Total: {stats.get('total_almatsurat', 0)})",
-        f"• 🌸 Shalawat: *{stats.get('avg_shalawat', 0.0)}x* (Total: {stats.get('total_shalawat', 0)})",
-        f"• 🤲 Istighfar: *{stats.get('avg_istighfar', 0.0)}x* (Total: {stats.get('total_istighfar', 0)})",
-        f"• 📜 Tadabbur: *{stats.get('avg_tadabbur', 0.0)} ayat* (Total: {stats.get('total_tadabbur', 0)})",
-        f"• 🍽️ Shaum Sunnah: *{stats.get('count_shaum', 0)} hari*",
-        f"• 🌃 Qiyamulail: *{stats.get('count_qiyam', 0)} hari*",
-        f"• ☀️ Dhuha: *{stats.get('count_dhuha', 0)} hari*",
-        f"• 🏃 Olahraga: *{stats.get('count_olahraga', 0)} hari*",
-        f"• 🤝 Silaturahim: *{stats.get('count_silaturahim', 0)} hari*",
-        f"• 🤲 Doa Ummat Islam: *{stats.get('avg_doa_ummat', 0.0)}x* (Total: {stats.get('total_doa_ummat', 0)})",
+        "👥 *Keaktifan Anggota:*",
+        f"• Terdaftar: {stats.get('registered_members', 0)} orang | Aktif Mengisi: {stats.get('active_submitters', 0)} orang ({stats.get('submission_rate', 0.0)}%)",
+        f"• Total Entri: {n_entries} laporan harian",
+        f"• Hari Mengisi: Rata-rata *{stats.get('avg_days_submitted', 0.0)} hari* (Min: {stats.get('min_days_submitted', 0)} • Max: {stats.get('max_days_submitted', 0)} hari)\n",
+        "⭐ *Performa Capaian Target:*",
+        f"• Rata-rata Capaian: *{stats.get('average_completion_rate', 0.0)}%* (Min: {stats.get('min_completion_rate', 0.0)}% • Max: {stats.get('max_completion_rate', 0.0)}%)\n",
+        "📌 *Rata-rata & Akumulasi Amalan (Harian):*",
+        f"• 📖 Tilawah: *{stats.get('avg_tilawah', 0.0)} hal/hari* (Total: {stats.get('total_tilawah', 0)} hal | Rentang: {stats.get('min_tilawah', 0)} – {stats.get('max_tilawah', 0)})",
+        f"• 🕌 Sholat Wajib: *{stats.get('avg_wajib', 0.0)} waktu/hari* (Total: {stats.get('total_wajib', 0)} | Rentang: {stats.get('min_wajib', 0)} – {stats.get('max_wajib', 0)})",
+        f"• 🌙 Rawatib: *{stats.get('avg_rawatib', 0.0)} rakaat/hari* (Total: {stats.get('total_rawatib', 0)} rkt | Rentang: {stats.get('min_rawatib', 0)} – {stats.get('max_rawatib', 0)})",
+        f"• 📿 Al-Ma’tsurat: *{stats.get('avg_almatsurat', 0.0)}x/hari* (Total: {stats.get('total_almatsurat', 0)}x | Rentang: {stats.get('min_almatsurat', 0)} – {stats.get('max_almatsurat', 0)})",
+        f"• 🌸 Shalawat: *{stats.get('avg_shalawat', 0.0)}x/hari* (Total: {stats.get('total_shalawat', 0):,} | Rentang: {stats.get('min_shalawat', 0)} – {stats.get('max_shalawat', 0)})".replace(",", "."),
+        f"• 🤲 Istighfar: *{stats.get('avg_istighfar', 0.0)}x/hari* (Total: {stats.get('total_istighfar', 0):,} | Rentang: {stats.get('min_istighfar', 0)} – {stats.get('max_istighfar', 0)})".replace(",", "."),
+        f"• 📜 Tadabbur: *{stats.get('avg_tadabbur', 0.0)} ayat/hari* (Total: {stats.get('total_tadabbur', 0)} ayat | Rentang: {stats.get('min_tadabbur', 0)} – {stats.get('max_tadabbur', 0)})",
+        f"• 🏃 Olahraga: *{stats.get('avg_olahraga', 0.0)} menit/hari* (Total: {stats.get('total_olahraga', 0)} mnt | Rentang: {stats.get('min_olahraga', 0)} – {stats.get('max_olahraga', 0)})",
+        f"• 🤲 Doa Ummat: *{stats.get('avg_doa_ummat', 0.0)}x/hari* (Total: {stats.get('total_doa_ummat', 0)}x | Rentang: {stats.get('min_doa_ummat', 0)} – {stats.get('max_doa_ummat', 0)})\n",
+        "📌 *Amalan Berkala (Checklist):*",
+        f"• ☀️ Dhuha: *{stats.get('count_dhuha', 0)} kali* ({stats.get('pct_dhuha', 0.0)}% entri • Total: {stats.get('count_dhuha', 0)} kali)",
+        f"• 🌃 Qiyamulail: *{stats.get('count_qiyam', 0)} kali* ({stats.get('pct_qiyam', 0.0)}% entri • Total: {stats.get('count_qiyam', 0)} kali)",
+        f"• 🤝 Silaturahim: *{stats.get('count_silaturahim', 0)} kali* ({stats.get('pct_silaturahim', 0.0)}% entri • Total: {stats.get('count_silaturahim', 0)} kali)",
+        f"• 🍽️ Shaum Sunnah: *{stats.get('count_shaum', 0)} kali* ({stats.get('pct_shaum', 0.0)}% entri • Total: {stats.get('count_shaum', 0)} kali)",
     ]
 
     # Show top active members preview if available
@@ -67,6 +70,11 @@ def format_admin_stats_text(stats: Dict[str, Any]) -> str:
         for idx, m in enumerate(members[:3], start=1):
             name = m.get("full_name") or m.get("username") or f"User {m.get('user_id')}"
             lines.append(f"{idx}. {name} — *{m.get('days_submitted', 0)} hari* ({m.get('avg_completion', 0.0)}%)")
+            highlights = m.get("highlights", [])
+            if highlights:
+                lines.append(f"   └ 🌟 _Unggul di:_ {', '.join(highlights)}")
+            elif m.get("days_submitted", 0) > 0:
+                lines.append(f"   └ 🌟 _Konsisten mengisi {m.get('days_submitted', 0)} hari_")
 
     lines.append("\n_Pilih periode lain di bawah atau klik Simpan ke Google Sheets:_")
     return "\n".join(lines)
