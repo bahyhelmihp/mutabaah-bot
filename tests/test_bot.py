@@ -380,6 +380,8 @@ class TestStatisticsService(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Unggul di:", formatted)
         self.assertIn("orang", formatted)
         self.assertIn("member", formatted)
+        self.assertIn("15 hal/hari", formatted)
+        self.assertIn("5 waktu/hari", formatted)
 
 
 class TestDatePresetsAndCustomParser(unittest.TestCase):

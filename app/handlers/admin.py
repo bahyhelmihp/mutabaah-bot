@@ -5,6 +5,7 @@ Supports:
 2. Writing/syncing complete executive summary and member leaderboard to Google Sheets 'Summary Stats'.
 """
 import logging
+import math
 from typing import Dict, Any, Optional
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -28,8 +29,16 @@ def is_admin_user(user_id: int) -> bool:
     return Config.is_admin(user_id)
 
 
+def _ceil_int(val: Any) -> int:
+    """Helper to round float values UP to integer (math.ceil)."""
+    try:
+        return math.ceil(float(val))
+    except (ValueError, TypeError):
+        return 0
+
+
 def format_admin_stats_text(stats: Dict[str, Any]) -> str:
-    """Format comprehensive stats text for admin."""
+    """Format comprehensive stats text for admin with counts rounded UP (math.ceil)."""
     period_label = stats.get("period_label", "Periode")
     start_date = stats.get("start_date", "")
     end_date = stats.get("end_date", "")
@@ -43,24 +52,24 @@ def format_admin_stats_text(stats: Dict[str, Any]) -> str:
         "👥 *Keaktifan Anggota:*",
         f"• Terdaftar: {stats.get('registered_members', 0)} orang | Aktif Mengisi: {stats.get('active_submitters', 0)} orang ({stats.get('submission_rate', 0.0)}%)",
         f"• Total Entri: {n_entries} laporan harian",
-        f"• Hari Mengisi: Rata-rata *{stats.get('avg_days_submitted', 0.0)} hari* (Min: {stats.get('min_days_submitted', 0)} • Max: {stats.get('max_days_submitted', 0)} hari)\n",
+        f"• Hari Mengisi: Rata-rata *{_ceil_int(stats.get('avg_days_submitted', 0))} hari* (Min: {_ceil_int(stats.get('min_days_submitted', 0))} • Max: {_ceil_int(stats.get('max_days_submitted', 0))} hari)\n",
         "⭐ *Performa Capaian Target:*",
         f"• Rata-rata Capaian: *{stats.get('average_completion_rate', 0.0)}%* (Min: {stats.get('min_completion_rate', 0.0)}% • Max: {stats.get('max_completion_rate', 0.0)}%)\n",
         "📌 *Rata-rata & Akumulasi Amalan (Harian):*",
-        f"• 📖 Tilawah: *{stats.get('avg_tilawah', 0.0)} hal/hari* (Total: {stats.get('total_tilawah', 0)} hal | Rentang: {stats.get('min_tilawah', 0)} – {stats.get('max_tilawah', 0)})",
-        f"• 🕌 Sholat Wajib: *{stats.get('avg_wajib', 0.0)} waktu/hari* (Total: {stats.get('total_wajib', 0)} | Rentang: {stats.get('min_wajib', 0)} – {stats.get('max_wajib', 0)})",
-        f"• 🌙 Rawatib: *{stats.get('avg_rawatib', 0.0)} rakaat/hari* (Total: {stats.get('total_rawatib', 0)} rkt | Rentang: {stats.get('min_rawatib', 0)} – {stats.get('max_rawatib', 0)})",
-        f"• 📿 Al-Ma’tsurat: *{stats.get('avg_almatsurat', 0.0)}x/hari* (Total: {stats.get('total_almatsurat', 0)}x | Rentang: {stats.get('min_almatsurat', 0)} – {stats.get('max_almatsurat', 0)})",
-        f"• 🌸 Shalawat: *{stats.get('avg_shalawat', 0.0)}x/hari* (Total: {stats.get('total_shalawat', 0):,} | Rentang: {stats.get('min_shalawat', 0)} – {stats.get('max_shalawat', 0)})".replace(",", "."),
-        f"• 🤲 Istighfar: *{stats.get('avg_istighfar', 0.0)}x/hari* (Total: {stats.get('total_istighfar', 0):,} | Rentang: {stats.get('min_istighfar', 0)} – {stats.get('max_istighfar', 0)})".replace(",", "."),
-        f"• 📜 Tadabbur: *{stats.get('avg_tadabbur', 0.0)} ayat/hari* (Total: {stats.get('total_tadabbur', 0)} ayat | Rentang: {stats.get('min_tadabbur', 0)} – {stats.get('max_tadabbur', 0)})",
-        f"• 🏃 Olahraga: *{stats.get('avg_olahraga', 0.0)} menit/hari* (Total: {stats.get('total_olahraga', 0)} mnt | Rentang: {stats.get('min_olahraga', 0)} – {stats.get('max_olahraga', 0)})",
-        f"• 🤲 Doa Ummat: *{stats.get('avg_doa_ummat', 0.0)}x/hari* (Total: {stats.get('total_doa_ummat', 0)}x | Rentang: {stats.get('min_doa_ummat', 0)} – {stats.get('max_doa_ummat', 0)})\n",
+        f"• 📖 Tilawah: *{_ceil_int(stats.get('avg_tilawah', 0))} hal/hari* (Total: {stats.get('total_tilawah', 0)} hal | Rentang: {_ceil_int(stats.get('min_tilawah', 0))} – {_ceil_int(stats.get('max_tilawah', 0))})",
+        f"• 🕌 Sholat Wajib: *{_ceil_int(stats.get('avg_wajib', 0))} waktu/hari* (Total: {stats.get('total_wajib', 0)} | Rentang: {_ceil_int(stats.get('min_wajib', 0))} – {_ceil_int(stats.get('max_wajib', 0))})",
+        f"• 🌙 Rawatib: *{_ceil_int(stats.get('avg_rawatib', 0))} rakaat/hari* (Total: {stats.get('total_rawatib', 0)} rkt | Rentang: {_ceil_int(stats.get('min_rawatib', 0))} – {_ceil_int(stats.get('max_rawatib', 0))})",
+        f"• 📿 Al-Ma’tsurat: *{_ceil_int(stats.get('avg_almatsurat', 0))}x/hari* (Total: {stats.get('total_almatsurat', 0)}x | Rentang: {_ceil_int(stats.get('min_almatsurat', 0))} – {_ceil_int(stats.get('max_almatsurat', 0))})",
+        f"• 🌸 Shalawat: *{_ceil_int(stats.get('avg_shalawat', 0))}x/hari* (Total: {stats.get('total_shalawat', 0):,} | Rentang: {_ceil_int(stats.get('min_shalawat', 0))} – {_ceil_int(stats.get('max_shalawat', 0))})".replace(",", "."),
+        f"• 🤲 Istighfar: *{_ceil_int(stats.get('avg_istighfar', 0))}x/hari* (Total: {stats.get('total_istighfar', 0):,} | Rentang: {_ceil_int(stats.get('min_istighfar', 0))} – {_ceil_int(stats.get('max_istighfar', 0))})".replace(",", "."),
+        f"• 📜 Tadabbur: *{_ceil_int(stats.get('avg_tadabbur', 0))} ayat/hari* (Total: {stats.get('total_tadabbur', 0)} ayat | Rentang: {_ceil_int(stats.get('min_tadabbur', 0))} – {_ceil_int(stats.get('max_tadabbur', 0))})",
+        f"• 🏃 Olahraga: *{_ceil_int(stats.get('avg_olahraga', 0))} menit/hari* (Total: {stats.get('total_olahraga', 0)} mnt | Rentang: {_ceil_int(stats.get('min_olahraga', 0))} – {_ceil_int(stats.get('max_olahraga', 0))})",
+        f"• 🤲 Doa Ummat: *{_ceil_int(stats.get('avg_doa_ummat', 0))}x/hari* (Total: {stats.get('total_doa_ummat', 0)}x | Rentang: {_ceil_int(stats.get('min_doa_ummat', 0))} – {_ceil_int(stats.get('max_doa_ummat', 0))})\n",
         "📌 *Amalan Berkala (Checklist):*",
-        f"• ☀️ Dhuha: *{stats.get('dhuha_members', 0)} orang* ({stats.get('pct_dhuha_members', 0.0)}%) • Rata-rata *{stats.get('avg_dhuha_per_member', 0.0)}x / member* (Total: {stats.get('count_dhuha', 0)}x | Rentang: {stats.get('min_dhuha', 0)} – {stats.get('max_dhuha', 0)}x)",
-        f"• 🌃 Qiyamulail: *{stats.get('qiyam_members', 0)} orang* ({stats.get('pct_qiyam_members', 0.0)}%) • Rata-rata *{stats.get('avg_qiyam_per_member', 0.0)}x / member* (Total: {stats.get('count_qiyam', 0)}x | Rentang: {stats.get('min_qiyam', 0)} – {stats.get('max_qiyam', 0)}x)",
-        f"• 🤝 Silaturahim: *{stats.get('silaturahim_members', 0)} orang* ({stats.get('pct_silaturahim_members', 0.0)}%) • Rata-rata *{stats.get('avg_silaturahim_per_member', 0.0)}x / member* (Total: {stats.get('count_silaturahim', 0)}x | Rentang: {stats.get('min_silaturahim', 0)} – {stats.get('max_silaturahim', 0)}x)",
-        f"• 🍽️ Shaum Sunnah: *{stats.get('shaum_members', 0)} orang* ({stats.get('pct_shaum_members', 0.0)}%) • Rata-rata *{stats.get('avg_shaum_per_member', 0.0)} hari / member* (Total: {stats.get('count_shaum', 0)} hari | Rentang: {stats.get('min_shaum', 0)} – {stats.get('max_shaum', 0)} hari)",
+        f"• ☀️ Dhuha: *{stats.get('dhuha_members', 0)} orang* ({stats.get('pct_dhuha_members', 0.0)}%) • Rata-rata *{_ceil_int(stats.get('avg_dhuha_per_member', 0))}x / member* (Total: {stats.get('count_dhuha', 0)}x | Rentang: {_ceil_int(stats.get('min_dhuha', 0))} – {_ceil_int(stats.get('max_dhuha', 0))}x)",
+        f"• 🌃 Qiyamulail: *{stats.get('qiyam_members', 0)} orang* ({stats.get('pct_qiyam_members', 0.0)}%) • Rata-rata *{_ceil_int(stats.get('avg_qiyam_per_member', 0))}x / member* (Total: {stats.get('count_qiyam', 0)}x | Rentang: {_ceil_int(stats.get('min_qiyam', 0))} – {_ceil_int(stats.get('max_qiyam', 0))}x)",
+        f"• 🤝 Silaturahim: *{stats.get('silaturahim_members', 0)} orang* ({stats.get('pct_silaturahim_members', 0.0)}%) • Rata-rata *{_ceil_int(stats.get('avg_silaturahim_per_member', 0))}x / member* (Total: {stats.get('count_silaturahim', 0)}x | Rentang: {_ceil_int(stats.get('min_silaturahim', 0))} – {_ceil_int(stats.get('max_silaturahim', 0))}x)",
+        f"• 🍽️ Shaum Sunnah: *{stats.get('shaum_members', 0)} orang* ({stats.get('pct_shaum_members', 0.0)}%) • Rata-rata *{_ceil_int(stats.get('avg_shaum_per_member', 0))} hari / member* (Total: {stats.get('count_shaum', 0)} hari | Rentang: {_ceil_int(stats.get('min_shaum', 0))} – {_ceil_int(stats.get('max_shaum', 0))} hari)",
     ]
 
     # Show top active members preview if available

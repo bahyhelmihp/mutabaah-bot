@@ -2,6 +2,7 @@
 Service for calculating user month progress and aggregate admin statistics.
 """
 import logging
+import math
 from typing import Dict, Any, List, Optional, Set
 from datetime import datetime, timedelta
 from app.services.sheets import SheetsService
@@ -66,39 +67,39 @@ def _extract_member_highlights(m: Dict[str, Any]) -> List[str]:
     # Tilawah
     avg_til = m.get("total_tilawah", 0) / days
     if avg_til >= 5.0:
-        achievements.append((avg_til / 20.0, f"📖 Tilawah {round(avg_til, 1)} hal/hari"))
+        achievements.append((avg_til / 20.0, f"📖 Tilawah {math.ceil(avg_til)} hal/hari"))
     elif m.get("total_tilawah", 0) > 0:
         achievements.append((avg_til / 20.0, f"📖 Tilawah {m.get('total_tilawah')} hal"))
 
     # Sholat Wajib
     avg_waj = m.get("total_wajib", 0) / days
     if avg_waj >= 4.0:
-        achievements.append((avg_waj / 5.0, f"🕌 Wajib {round(avg_waj, 1)}/5"))
+        achievements.append((avg_waj / 5.0, f"🕌 Wajib {math.ceil(avg_waj)}/5"))
 
     # Rawatib
     avg_raw = m.get("total_rawatib", 0) / days
     if avg_raw >= 4.0:
-        achievements.append((avg_raw / 12.0, f"🌙 Rawatib {round(avg_raw, 1)} rkt"))
+        achievements.append((avg_raw / 12.0, f"🌙 Rawatib {math.ceil(avg_raw)} rkt"))
 
     # Al-Ma'tsurat
     avg_mat = m.get("total_almatsurat", 0) / days
     if avg_mat >= 1.0:
-        achievements.append((avg_mat / 2.0, f"📿 Ma’tsurat {round(avg_mat, 1)}x"))
+        achievements.append((avg_mat / 2.0, f"📿 Ma’tsurat {math.ceil(avg_mat)}x"))
 
     # Shalawat
     avg_shal = m.get("total_shalawat", 0) / days
     if avg_shal >= 50.0:
-        achievements.append((avg_shal / 100.0, f"🌸 Shalawat {int(avg_shal)}x"))
+        achievements.append((avg_shal / 100.0, f"🌸 Shalawat {math.ceil(avg_shal)}x"))
 
     # Istighfar
     avg_ist = m.get("total_istighfar", 0) / days
     if avg_ist >= 50.0:
-        achievements.append((avg_ist / 100.0, f"🤲 Istighfar {int(avg_ist)}x"))
+        achievements.append((avg_ist / 100.0, f"🤲 Istighfar {math.ceil(avg_ist)}x"))
 
     # Tadabbur
     avg_tad = m.get("total_tadabbur", 0) / days
     if avg_tad >= 1.0:
-        achievements.append((avg_tad / 1.0, f"📜 Tadabbur {round(avg_tad, 1)} ayat"))
+        achievements.append((avg_tad / 1.0, f"📜 Tadabbur {math.ceil(avg_tad)} ayat"))
 
     # Qiyamulail
     q_count = m.get("count_qiyam", 0)
