@@ -74,42 +74,42 @@ def _extract_member_highlights(m: Dict[str, Any]) -> List[str]:
     # Sholat Wajib
     avg_waj = m.get("total_wajib", 0) / days
     if avg_waj >= 4.0:
-        achievements.append((avg_waj / 5.0, f"🕌 Wajib {math.ceil(avg_waj)}/5"))
+        achievements.append((avg_waj / 5.0, f"🕌 Wajib {math.ceil(avg_waj)}/5 waktu/hari"))
 
     # Rawatib
     avg_raw = m.get("total_rawatib", 0) / days
     if avg_raw >= 4.0:
-        achievements.append((avg_raw / 12.0, f"🌙 Rawatib {math.ceil(avg_raw)} rkt"))
+        achievements.append((avg_raw / 12.0, f"🌙 Rawatib {math.ceil(avg_raw)} rkt/hari"))
 
     # Al-Ma'tsurat
     avg_mat = m.get("total_almatsurat", 0) / days
     if avg_mat >= 1.0:
-        achievements.append((avg_mat / 2.0, f"📿 Ma’tsurat {math.ceil(avg_mat)}x"))
+        achievements.append((avg_mat / 2.0, f"📿 Ma’tsurat {math.ceil(avg_mat)}x/hari"))
 
     # Shalawat
     avg_shal = m.get("total_shalawat", 0) / days
     if avg_shal >= 50.0:
-        achievements.append((avg_shal / 100.0, f"🌸 Shalawat {math.ceil(avg_shal)}x"))
+        achievements.append((avg_shal / 100.0, f"🌸 Shalawat {math.ceil(avg_shal)}x/hari"))
 
     # Istighfar
     avg_ist = m.get("total_istighfar", 0) / days
     if avg_ist >= 50.0:
-        achievements.append((avg_ist / 100.0, f"🤲 Istighfar {math.ceil(avg_ist)}x"))
+        achievements.append((avg_ist / 100.0, f"🤲 Istighfar {math.ceil(avg_ist)}x/hari"))
 
     # Tadabbur
     avg_tad = m.get("total_tadabbur", 0) / days
     if avg_tad >= 1.0:
-        achievements.append((avg_tad / 1.0, f"📜 Tadabbur {math.ceil(avg_tad)} ayat"))
+        achievements.append((avg_tad / 1.0, f"📜 Tadabbur {math.ceil(avg_tad)} ayat/hari"))
 
     # Qiyamulail
     q_count = m.get("count_qiyam", 0)
     if q_count >= 1:
-        achievements.append((q_count / days, f"🌃 Qiyam {q_count}x"))
+        achievements.append((q_count / days, f"🌃 Qiyam {q_count} malam"))
 
     # Dhuha
     d_count = m.get("count_dhuha", 0)
     if d_count >= 1:
-        achievements.append((d_count / days, f"☀️ Dhuha {d_count}x"))
+        achievements.append((d_count / days, f"☀️ Dhuha {d_count} hari"))
 
     # Shaum Sunnah
     s_count = m.get("count_shaum", 0)
@@ -119,7 +119,7 @@ def _extract_member_highlights(m: Dict[str, Any]) -> List[str]:
     # Olahraga (menit)
     tot_ol = m.get("total_olahraga", 0)
     if tot_ol >= 15:
-        achievements.append((tot_ol / 30.0, f"🏃 Olahraga {tot_ol} mnt"))
+        achievements.append((tot_ol / 30.0, f"🏃 Olahraga total {tot_ol} mnt"))
 
     # Silaturahim
     sil_count = m.get("count_silaturahim", 0)
@@ -127,9 +127,11 @@ def _extract_member_highlights(m: Dict[str, Any]) -> List[str]:
         achievements.append((sil_count / days, f"🤝 Silaturahim {sil_count}x"))
 
     # Doa Ummat
-    tot_doa = m.get("total_doa_ummat", 0)
-    if tot_doa >= 1:
-        achievements.append((tot_doa / days, f"🤲 Doa Ummat {tot_doa}x"))
+    avg_doa = m.get("total_doa_ummat", 0) / days
+    if avg_doa >= 1.0:
+        achievements.append((avg_doa / 1.0, f"🤲 Doa Ummat {math.ceil(avg_doa)}x/hari"))
+    elif m.get("total_doa_ummat", 0) >= 1:
+        achievements.append((m.get("total_doa_ummat", 0) / days, f"🤲 Doa Ummat total {m.get('total_doa_ummat')}x"))
 
     achievements.sort(key=lambda x: x[0], reverse=True)
     return [item[1] for item in achievements[:3]]
