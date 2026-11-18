@@ -365,6 +365,9 @@ class TestStatisticsService(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stats["max_tilawah"], 20.0)
         self.assertEqual(stats["total_olahraga"], 30)
         self.assertTrue(len(stats["member_breakdown"][0]["highlights"]) > 0)
+        self.assertEqual(stats["dhuha_members"], 2)
+        self.assertEqual(stats["pct_dhuha_members"], 100.0)
+        self.assertEqual(stats["avg_dhuha_per_member"], 1.0)
 
         # Test format_admin_stats_text output
         from app.handlers.admin import format_admin_stats_text
@@ -375,6 +378,8 @@ class TestStatisticsService(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Rentang:", formatted)
         self.assertIn("Top 3 Anggota Terajin", formatted)
         self.assertIn("Unggul di:", formatted)
+        self.assertIn("orang", formatted)
+        self.assertIn("member", formatted)
 
 
 class TestDatePresetsAndCustomParser(unittest.TestCase):

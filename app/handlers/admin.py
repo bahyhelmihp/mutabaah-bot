@@ -57,10 +57,10 @@ def format_admin_stats_text(stats: Dict[str, Any]) -> str:
         f"• 🏃 Olahraga: *{stats.get('avg_olahraga', 0.0)} menit/hari* (Total: {stats.get('total_olahraga', 0)} mnt | Rentang: {stats.get('min_olahraga', 0)} – {stats.get('max_olahraga', 0)})",
         f"• 🤲 Doa Ummat: *{stats.get('avg_doa_ummat', 0.0)}x/hari* (Total: {stats.get('total_doa_ummat', 0)}x | Rentang: {stats.get('min_doa_ummat', 0)} – {stats.get('max_doa_ummat', 0)})\n",
         "📌 *Amalan Berkala (Checklist):*",
-        f"• ☀️ Dhuha: *{stats.get('count_dhuha', 0)} kali* ({stats.get('pct_dhuha', 0.0)}% entri • Total: {stats.get('count_dhuha', 0)} kali)",
-        f"• 🌃 Qiyamulail: *{stats.get('count_qiyam', 0)} kali* ({stats.get('pct_qiyam', 0.0)}% entri • Total: {stats.get('count_qiyam', 0)} kali)",
-        f"• 🤝 Silaturahim: *{stats.get('count_silaturahim', 0)} kali* ({stats.get('pct_silaturahim', 0.0)}% entri • Total: {stats.get('count_silaturahim', 0)} kali)",
-        f"• 🍽️ Shaum Sunnah: *{stats.get('count_shaum', 0)} kali* ({stats.get('pct_shaum', 0.0)}% entri • Total: {stats.get('count_shaum', 0)} kali)",
+        f"• ☀️ Dhuha: *{stats.get('dhuha_members', 0)} orang* ({stats.get('pct_dhuha_members', 0.0)}%) • Rata-rata *{stats.get('avg_dhuha_per_member', 0.0)}x / member* (Total: {stats.get('count_dhuha', 0)}x | Rentang: {stats.get('min_dhuha', 0)} – {stats.get('max_dhuha', 0)}x)",
+        f"• 🌃 Qiyamulail: *{stats.get('qiyam_members', 0)} orang* ({stats.get('pct_qiyam_members', 0.0)}%) • Rata-rata *{stats.get('avg_qiyam_per_member', 0.0)}x / member* (Total: {stats.get('count_qiyam', 0)}x | Rentang: {stats.get('min_qiyam', 0)} – {stats.get('max_qiyam', 0)}x)",
+        f"• 🤝 Silaturahim: *{stats.get('silaturahim_members', 0)} orang* ({stats.get('pct_silaturahim_members', 0.0)}%) • Rata-rata *{stats.get('avg_silaturahim_per_member', 0.0)}x / member* (Total: {stats.get('count_silaturahim', 0)}x | Rentang: {stats.get('min_silaturahim', 0)} – {stats.get('max_silaturahim', 0)}x)",
+        f"• 🍽️ Shaum Sunnah: *{stats.get('shaum_members', 0)} orang* ({stats.get('pct_shaum_members', 0.0)}%) • Rata-rata *{stats.get('avg_shaum_per_member', 0.0)} hari / member* (Total: {stats.get('count_shaum', 0)} hari | Rentang: {stats.get('min_shaum', 0)} – {stats.get('max_shaum', 0)} hari)",
     ]
 
     # Show top active members preview if available

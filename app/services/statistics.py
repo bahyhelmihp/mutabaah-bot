@@ -703,6 +703,35 @@ class StatisticsService:
             doa_list = [round(m["total_doa_ummat"] / m["days_submitted"], 1) for m in active_submitted]
             min_doa_ummat = min(doa_list)
             max_doa_ummat = max(doa_list)
+
+            # Checklist amalan per-member stats
+            dhuha_counts = [m["count_dhuha"] for m in active_submitted]
+            dhuha_members = sum(1 for c in dhuha_counts if c > 0)
+            pct_dhuha_members = round((dhuha_members / len(active_submitted)) * 100, 1)
+            avg_dhuha_per_member = round(sum(dhuha_counts) / len(active_submitted), 1)
+            min_dhuha = min(dhuha_counts)
+            max_dhuha = max(dhuha_counts)
+
+            qiyam_counts = [m["count_qiyam"] for m in active_submitted]
+            qiyam_members = sum(1 for c in qiyam_counts if c > 0)
+            pct_qiyam_members = round((qiyam_members / len(active_submitted)) * 100, 1)
+            avg_qiyam_per_member = round(sum(qiyam_counts) / len(active_submitted), 1)
+            min_qiyam = min(qiyam_counts)
+            max_qiyam = max(qiyam_counts)
+
+            shaum_counts = [m["count_shaum"] for m in active_submitted]
+            shaum_members = sum(1 for c in shaum_counts if c > 0)
+            pct_shaum_members = round((shaum_members / len(active_submitted)) * 100, 1)
+            avg_shaum_per_member = round(sum(shaum_counts) / len(active_submitted), 1)
+            min_shaum = min(shaum_counts)
+            max_shaum = max(shaum_counts)
+
+            silaturahim_counts = [m["count_silaturahim"] for m in active_submitted]
+            silaturahim_members = sum(1 for c in silaturahim_counts if c > 0)
+            pct_silaturahim_members = round((silaturahim_members / len(active_submitted)) * 100, 1)
+            avg_silaturahim_per_member = round(sum(silaturahim_counts) / len(active_submitted), 1)
+            min_silaturahim = min(silaturahim_counts)
+            max_silaturahim = max(silaturahim_counts)
         else:
             min_completion_rate = 0.0
             max_completion_rate = 0.0
@@ -718,6 +747,13 @@ class StatisticsService:
             min_tadabbur = max_tadabbur = 0.0
             min_olahraga = max_olahraga = 0.0
             min_doa_ummat = max_doa_ummat = 0.0
+            dhuha_members = qiyam_members = shaum_members = silaturahim_members = 0
+            pct_dhuha_members = pct_qiyam_members = pct_shaum_members = pct_silaturahim_members = 0.0
+            avg_dhuha_per_member = avg_qiyam_per_member = avg_shaum_per_member = avg_silaturahim_per_member = 0.0
+            min_dhuha = max_dhuha = 0
+            min_qiyam = max_qiyam = 0
+            min_shaum = max_shaum = 0
+            min_silaturahim = max_silaturahim = 0
 
         pct_shaum = round((count_shaum / n_entries) * 100, 1) if n_entries > 0 else 0.0
         pct_qiyam = round((count_qiyam / n_entries) * 100, 1) if n_entries > 0 else 0.0
@@ -773,10 +809,25 @@ class StatisticsService:
             "max_tadabbur": max_tadabbur,
             "count_shaum": count_shaum,
             "pct_shaum": pct_shaum,
+            "shaum_members": shaum_members,
+            "pct_shaum_members": pct_shaum_members,
+            "avg_shaum_per_member": avg_shaum_per_member,
+            "min_shaum": min_shaum,
+            "max_shaum": max_shaum,
             "count_qiyam": count_qiyam,
             "pct_qiyam": pct_qiyam,
+            "qiyam_members": qiyam_members,
+            "pct_qiyam_members": pct_qiyam_members,
+            "avg_qiyam_per_member": avg_qiyam_per_member,
+            "min_qiyam": min_qiyam,
+            "max_qiyam": max_qiyam,
             "count_dhuha": count_dhuha,
             "pct_dhuha": pct_dhuha,
+            "dhuha_members": dhuha_members,
+            "pct_dhuha_members": pct_dhuha_members,
+            "avg_dhuha_per_member": avg_dhuha_per_member,
+            "min_dhuha": min_dhuha,
+            "max_dhuha": max_dhuha,
             "count_olahraga": count_olahraga,
             "total_olahraga": total_olahraga,
             "avg_olahraga": avg_olahraga,
@@ -784,6 +835,11 @@ class StatisticsService:
             "max_olahraga": max_olahraga,
             "count_silaturahim": count_silaturahim,
             "pct_silaturahim": pct_silaturahim,
+            "silaturahim_members": silaturahim_members,
+            "pct_silaturahim_members": pct_silaturahim_members,
+            "avg_silaturahim_per_member": avg_silaturahim_per_member,
+            "min_silaturahim": min_silaturahim,
+            "max_silaturahim": max_silaturahim,
             "total_doa_ummat": total_doa_ummat,
             "avg_doa_ummat": avg_doa_ummat,
             "min_doa_ummat": min_doa_ummat,
