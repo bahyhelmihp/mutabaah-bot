@@ -135,15 +135,28 @@ class MappingService:
         return sorted(list(kelompoks))
 
     def get_member_kelompok(self, user_id: str, full_name: str = "") -> str:
-        """Get kelompok for a user by telegram id or fallback to full name."""
-        meta = self._mutarabbi_meta.get(str(user_id).strip())
+        """Get kelompok for a user by telegram id, murobbi role, or name fallback."""
+        uid_str = str(user_id).strip()
+        meta = self._mutarabbi_meta.get(uid_str)
         if meta and meta.get("kelompok"):
             return meta["kelompok"]
+
+        # Check if user is a Murobbi (whose kelompok is listed in mapping under another murobbi)
+        if uid_str.isdigit():
+            m_name = self.get_murobbi_name(int(uid_str))
+            if m_name:
+                m_clean = m_name.strip().lower()
+                for b_meta in self._mutarabbi_meta.values():
+                    if b_meta.get("name", "").strip().lower() == m_clean and b_meta.get("kelompok"):
+                        return b_meta["kelompok"]
+
+        # Match by name (exact or word/substring match)
         if full_name:
             target_name = full_name.strip().lower()
-            for m in self._mutarabbi_meta.values():
-                if m.get("name", "").strip().lower() == target_name and m.get("kelompok"):
-                    return m["kelompok"]
+            for b_meta in self._mutarabbi_meta.values():
+                b_name = b_meta.get("name", "").strip().lower()
+                if (target_name == b_name or (len(target_name) >= 4 and target_name in b_name)) and b_meta.get("kelompok"):
+                    return b_meta["kelompok"]
         return "-"
 
     async def get_binaan_overview(
