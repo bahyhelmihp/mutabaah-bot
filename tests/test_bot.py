@@ -383,6 +383,37 @@ class TestStatisticsService(unittest.IsolatedAsyncioTestCase):
         self.assertIn("15 hal/hari", formatted)
         self.assertIn("5 waktu/hari", formatted)
 
+        # Test calculate_period_admin_stats with kelompok_filter
+        from unittest.mock import patch
+        with patch("app.services.mapping.MappingService.get_instance") as mock_map_inst:
+            mock_map = MagicMock()
+            mock_map.reload_cache = AsyncMock()
+            mock_map.get_member_kelompok = MagicMock(side_effect=lambda uid, fname: "Muayyid" if uid == "111" else "Muntasib")
+            mock_map_inst.return_value = mock_map
+
+            stats_muayyid = await stats_service.calculate_period_admin_stats(
+                start_date="2026-10-01",
+                end_date="2026-10-10",
+                period_label="Pekan 1 Oktober",
+                kelompok_filter="Muayyid",
+            )
+            self.assertEqual(stats_muayyid["registered_members"], 1)
+            self.assertEqual(stats_muayyid["active_submitters"], 1)
+            self.assertEqual(stats_muayyid["total_tilawah"], 20)
+            self.assertEqual(stats_muayyid["kelompok_filter"], "Muayyid")
+
+            formatted_k = format_admin_stats_text(stats_muayyid)
+            self.assertIn("Kelompok:", formatted_k)
+            self.assertIn("Muayyid", formatted_k)
+
+        # Test get_admin_period_keyboard with kelompok
+        from app.keyboards.common import get_admin_period_keyboard
+        markup = get_admin_period_keyboard("sheet123", "monthly", "Muayyid", ["Muntasib", "Muayyid"])
+        btn_texts = [b.text for row in markup.inline_keyboard for b in row]
+        self.assertIn("✅ Muayyid", btn_texts)
+        self.assertIn("Muntasib", btn_texts)
+        self.assertIn("Semua", btn_texts)
+
 
 class TestDatePresetsAndCustomParser(unittest.TestCase):
     def test_date_range_presets(self):

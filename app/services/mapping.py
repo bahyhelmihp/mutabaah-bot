@@ -125,6 +125,27 @@ class MappingService:
         """Get metadata (name, kelompok) for a mutarabbi."""
         return self._mutarabbi_meta.get(str(mutarabbi_id).strip())
 
+    def get_all_kelompoks(self) -> List[str]:
+        """Get sorted list of distinct kelompok names found in mapping cache."""
+        kelompoks = set()
+        for meta in self._mutarabbi_meta.values():
+            k = meta.get("kelompok", "").strip()
+            if k and k != "-":
+                kelompoks.add(k)
+        return sorted(list(kelompoks))
+
+    def get_member_kelompok(self, user_id: str, full_name: str = "") -> str:
+        """Get kelompok for a user by telegram id or fallback to full name."""
+        meta = self._mutarabbi_meta.get(str(user_id).strip())
+        if meta and meta.get("kelompok"):
+            return meta["kelompok"]
+        if full_name:
+            target_name = full_name.strip().lower()
+            for m in self._mutarabbi_meta.values():
+                if m.get("name", "").strip().lower() == target_name and m.get("kelompok"):
+                    return m["kelompok"]
+        return "-"
+
     async def get_binaan_overview(
         self, user_id: int, tz_name: str = Config.TIMEZONE
     ) -> Dict[str, Any]:

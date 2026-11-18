@@ -414,31 +414,60 @@ def get_admin_keyboard(sheet_id: str) -> InlineKeyboardMarkup:
 def get_admin_period_keyboard(
     sheet_id: str,
     current_period_key: str = "monthly",
+    current_kelompok: str = "all",
+    available_kelompoks: Optional[List[str]] = None,
 ) -> InlineKeyboardMarkup:
-    """Admin keyboard with period filters and Google Sheets summary sync."""
+    """Admin keyboard with kelompok filters, period filters, and Google Sheets summary sync."""
     sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}"
-    keyboard = [
-        [
-            InlineKeyboardButton("📅 Hari Ini", callback_data="admin_period_today"),
-            InlineKeyboardButton("📆 7 Hari Terakhir", callback_data="admin_period_weekly"),
-        ],
-        [
-            InlineKeyboardButton("🗓️ Bulan Ini", callback_data="admin_period_monthly"),
-            InlineKeyboardButton("⏪ Bulan Lalu", callback_data="admin_period_last_month"),
-        ],
-        [
-            InlineKeyboardButton("🔍 Tanggal Bebas / Custom", callback_data="admin_period_custom"),
-        ],
-        [
-            InlineKeyboardButton("📑 Tulis Rekap ke Google Sheets", callback_data=f"admin_sync_{current_period_key}"),
-        ],
-        [
-            InlineKeyboardButton("🔗 Buka Google Sheet", url=sheet_url),
-        ],
-        [
-            InlineKeyboardButton("🏠 Menu Utama", callback_data="btn_main_menu"),
-        ],
+    keyboard = []
+
+    # 1. Kelompok filter buttons
+    if available_kelompoks is None:
+        available_kelompoks = ["Muntasib", "Muayyid", "Muhib"]
+
+    kelompok_buttons = []
+    is_all = (not current_kelompok or current_kelompok.lower() in ["all", "semua"])
+    all_label = "✅ Semua" if is_all else "Semua"
+    kelompok_buttons.append(InlineKeyboardButton(all_label, callback_data="admin_kelompok_all"))
+
+    for k in available_kelompoks:
+        is_sel = (current_kelompok.lower() == k.lower())
+        k_label = f"✅ {k}" if is_sel else k
+        kelompok_buttons.append(InlineKeyboardButton(k_label, callback_data=f"admin_kelompok_{k}"))
+
+    for i in range(0, len(kelompok_buttons), 3):
+        keyboard.append(kelompok_buttons[i : i + 3])
+
+    # 2. Period filter buttons
+    period_options = [
+        ("today", "📅 Hari Ini"),
+        ("weekly", "📆 7 Hari Terakhir"),
+        ("monthly", "🗓️ Bulan Ini"),
+        ("last_month", "⏪ Bulan Lalu"),
     ]
+    p_row = []
+    for p_key, p_text in period_options:
+        label = f"• {p_text} •" if p_key == current_period_key else p_text
+        p_row.append(InlineKeyboardButton(label, callback_data=f"admin_period_{p_key}"))
+        if len(p_row) == 2:
+            keyboard.append(p_row)
+            p_row = []
+    if p_row:
+        keyboard.append(p_row)
+
+    custom_label = "• 🔍 Tanggal Bebas / Custom •" if current_period_key == "custom" else "🔍 Tanggal Bebas / Custom"
+    keyboard.append([InlineKeyboardButton(custom_label, callback_data="admin_period_custom")])
+
+    # 3. Actions
+    keyboard.append([
+        InlineKeyboardButton("📑 Tulis Rekap ke Google Sheets", callback_data=f"admin_sync_{current_period_key}"),
+    ])
+    keyboard.append([
+        InlineKeyboardButton("🔗 Buka Google Sheet", url=sheet_url),
+    ])
+    keyboard.append([
+        InlineKeyboardButton("🏠 Menu Utama", callback_data="btn_main_menu"),
+    ])
     return InlineKeyboardMarkup(keyboard)
 
 

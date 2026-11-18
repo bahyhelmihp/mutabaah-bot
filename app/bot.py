@@ -193,7 +193,7 @@ def create_application() -> Application:
     app.add_handler(
         CallbackQueryHandler(
             handle_admin_callbacks,
-            pattern="^(admin_stats|admin_period_|admin_sync_)",
+            pattern="^(admin_stats|admin_period_|admin_sync_|admin_kelompok_)",
         )
     )
 

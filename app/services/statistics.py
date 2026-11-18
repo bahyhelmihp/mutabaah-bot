@@ -474,18 +474,39 @@ class StatisticsService:
         end_date: str,
         period_label: str,
         tz_name: str = Config.TIMEZONE,
+        kelompok_filter: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Calculate comprehensive aggregate stats for admin over any given period
-        (today, weekly, monthly, last month, or custom range).
+        (today, weekly, monthly, last month, or custom range) optionally filtered by Kelompok.
         """
         today_str = get_today_str(tz_name)
         active_members = await self.members.get_all_active_members()
+
+        # Handle kelompok filter
+        normalized_kelompok = (kelompok_filter or "").strip()
+        if normalized_kelompok and normalized_kelompok.lower() not in ["all", "semua"]:
+            from app.services.mapping import MappingService
+            mapping_svc = MappingService.get_instance()
+            await mapping_svc.reload_cache()
+
+            def _matches_kelompok(m: Dict[str, Any]) -> bool:
+                uid = str(m.get("Telegram User ID", "")).strip()
+                fname = str(m.get("Full Name", "")).strip()
+                mem_k = str(m.get("Kelompok", "")).strip()
+                if mem_k:
+                    return mem_k.lower() == normalized_kelompok.lower()
+                k = mapping_svc.get_member_kelompok(uid, fname)
+                return k.lower() == normalized_kelompok.lower()
+
+            active_members = [m for m in active_members if _matches_kelompok(m)]
+
         registered_count = len(active_members)
+        allowed_uids = {str(m.get("Telegram User ID", "")).strip() for m in active_members}
 
         all_rows = await self.sheets.get_all_mutabaah_rows()
 
-        # Filter rows by date range
+        # Filter rows by date range and allowed members
         period_rows: List[Dict[str, Any]] = []
         today_submitters = set()
         period_submitters = set()
@@ -493,6 +514,10 @@ class StatisticsService:
         for r in all_rows:
             r_uid = str(r.get("Telegram User ID", "")).strip()
             r_date = str(r.get("Date", "")).strip()
+
+            if normalized_kelompok and normalized_kelompok.lower() not in ["all", "semua"]:
+                if r_uid not in allowed_uids:
+                    continue
 
             if r_date == today_str and r_uid:
                 today_submitters.add(r_uid)
@@ -847,6 +872,7 @@ class StatisticsService:
             "avg_doa_ummat": avg_doa_ummat,
             "min_doa_ummat": min_doa_ummat,
             "max_doa_ummat": max_doa_ummat,
+            "kelompok_filter": normalized_kelompok or "all",
             "member_breakdown": member_breakdown,
         }
 

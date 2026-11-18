@@ -12,6 +12,7 @@ from telegram.ext import ContextTypes
 from app.config import Config
 from app.services.statistics import StatisticsService
 from app.services.sheets import SheetsService
+from app.services.mapping import MappingService
 from app.keyboards.common import (
     get_admin_keyboard,
     get_admin_period_keyboard,
@@ -42,14 +43,21 @@ def format_admin_stats_text(stats: Dict[str, Any]) -> str:
     period_label = stats.get("period_label", "Periode")
     start_date = stats.get("start_date", "")
     end_date = stats.get("end_date", "")
+    kelompok_filter = stats.get("kelompok_filter", "all")
 
     date_range_str = f"_{start_date} s/d {end_date}_" if start_date != end_date else f"_{start_date}_"
     n_entries = stats.get("total_submissions", 0)
 
+    kelompok_badge = ""
+    group_header = "👥 *Keaktifan Anggota:*"
+    if kelompok_filter and kelompok_filter.lower() not in ["all", "semua"]:
+        kelompok_badge = f"🏷️ *Kelompok:* `{kelompok_filter}`\n"
+        group_header = f"👥 *Keaktifan Anggota ({kelompok_filter}):*"
+
     lines = [
         f"📊 *Statistik Mutabaah: {period_label}*",
-        f"{date_range_str}\n",
-        "👥 *Keaktifan Anggota:*",
+        f"{kelompok_badge}{date_range_str}\n" if kelompok_badge else f"{date_range_str}\n",
+        group_header,
         f"• Terdaftar: {stats.get('registered_members', 0)} orang | Aktif Mengisi: {stats.get('active_submitters', 0)} orang ({stats.get('submission_rate', 0.0)}%)",
         f"• Total Entri: {n_entries} laporan harian",
         f"• Hari Mengisi: Rata-rata *{_ceil_int(stats.get('avg_days_submitted', 0))} hari* (Min: {_ceil_int(stats.get('min_days_submitted', 0))} • Max: {_ceil_int(stats.get('max_days_submitted', 0))} hari)\n",
@@ -101,13 +109,18 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "👑 *Panel Admin Mutabaah IMA Korea*\n\n"
         "Menu khusus pengurus untuk memantau rekap mutabaah anggota:\n\n"
-        "• /stats - Rekap statistik (Pilih Periode, Mingguan, Bulanan, atau Rentang Bebas)\n"
+        "• /stats - Rekap statistik (Pilih Kelompok, Periode, atau Rentang Bebas)\n"
         "• /export - Tautan spreadsheet Google Sheets\n\n"
-        "Silakan pilih periode statistik di bawah untuk langsung melihat laporan:"
+        "Silakan pilih kelompok atau periode statistik di bawah untuk langsung melihat laporan:"
     )
+    mapping_service = MappingService.get_instance()
+    await mapping_service.reload_cache()
+    avail_k = mapping_service.get_all_kelompoks()
+    sel_k = context.user_data.get("admin_selected_kelompok", "all")
+
     await update.effective_message.reply_text(
         text,
-        reply_markup=get_admin_period_keyboard(Config.GOOGLE_SHEET_ID, "monthly"),
+        reply_markup=get_admin_period_keyboard(Config.GOOGLE_SHEET_ID, "monthly", sel_k, avail_k),
         parse_mode="Markdown",
     )
 
@@ -164,12 +177,18 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 period_label = custom_range["label"]
 
     stats_service = StatisticsService()
+    mapping_service = MappingService.get_instance()
+    await mapping_service.reload_cache()
+    avail_k = mapping_service.get_all_kelompoks()
+    sel_k = context.user_data.get("admin_selected_kelompok", "all")
+
     try:
         stats = await stats_service.calculate_period_admin_stats(
             start_date=start_date,
             end_date=end_date,
             period_label=period_label,
             tz_name=Config.TIMEZONE,
+            kelompok_filter=sel_k,
         )
         context.user_data["last_admin_stats"] = stats
         context.user_data["last_admin_period_key"] = period_key
@@ -181,7 +200,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text = format_admin_stats_text(stats)
-    markup = get_admin_period_keyboard(Config.GOOGLE_SHEET_ID, period_key)
+    markup = get_admin_period_keyboard(Config.GOOGLE_SHEET_ID, period_key, sel_k, avail_k)
 
     if update.callback_query:
         try:
@@ -199,7 +218,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_admin_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle period filter buttons and sync to sheet."""
+    """Handle period filter buttons, kelompok filter buttons, and sync to sheet."""
     query = update.callback_query
     if not query:
         return
@@ -216,10 +235,46 @@ async def handle_admin_callbacks(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer()
         return await stats_command(update, context)
 
+    mapping_service = MappingService.get_instance()
+    await mapping_service.reload_cache()
+    avail_k = mapping_service.get_all_kelompoks()
+
+    if data.startswith("admin_kelompok_"):
+        await query.answer()
+        sel_k = data.replace("admin_kelompok_", "").strip()
+        context.user_data["admin_selected_kelompok"] = sel_k
+
+        p_key = context.user_data.get("last_admin_period_key", "monthly")
+        if p_key == "custom" and "last_admin_custom_range" in context.user_data:
+            c_start, c_end, c_label = context.user_data["last_admin_custom_range"]
+            start_date, end_date, period_label = c_start, c_end, c_label
+        else:
+            preset = presets.get(p_key, presets["monthly"])
+            start_date, end_date, period_label = preset["start_date"], preset["end_date"], preset["label"]
+
+        stats_service = StatisticsService()
+        try:
+            stats = await stats_service.calculate_period_admin_stats(
+                start_date=start_date,
+                end_date=end_date,
+                period_label=period_label,
+                tz_name=Config.TIMEZONE,
+                kelompok_filter=sel_k,
+            )
+            context.user_data["last_admin_stats"] = stats
+            text = format_admin_stats_text(stats)
+            markup = get_admin_period_keyboard(Config.GOOGLE_SHEET_ID, p_key, sel_k, avail_k)
+            await query.edit_message_text(text=text, reply_markup=markup, parse_mode="Markdown")
+        except Exception as e:
+            logger.error("Error calculating stats for kelompok %s: %s", sel_k, e)
+            await query.message.reply_text("⚠️ Gagal mengambil statistik untuk kelompok tersebut.")
+        return
+
     if data in ["admin_period_today", "admin_period_weekly", "admin_period_monthly", "admin_period_last_month"]:
         await query.answer()
         p_key = data.replace("admin_period_", "")
         preset = presets.get(p_key, presets["monthly"])
+        sel_k = context.user_data.get("admin_selected_kelompok", "all")
 
         stats_service = StatisticsService()
         try:
@@ -228,11 +283,12 @@ async def handle_admin_callbacks(update: Update, context: ContextTypes.DEFAULT_T
                 end_date=preset["end_date"],
                 period_label=preset["label"],
                 tz_name=Config.TIMEZONE,
+                kelompok_filter=sel_k,
             )
             context.user_data["last_admin_stats"] = stats
             context.user_data["last_admin_period_key"] = p_key
             text = format_admin_stats_text(stats)
-            markup = get_admin_period_keyboard(Config.GOOGLE_SHEET_ID, p_key)
+            markup = get_admin_period_keyboard(Config.GOOGLE_SHEET_ID, p_key, sel_k, avail_k)
             await query.edit_message_text(text=text, reply_markup=markup, parse_mode="Markdown")
         except Exception as e:
             logger.error("Error calculating stats for %s: %s", p_key, e)
@@ -309,7 +365,13 @@ async def handle_admin_custom_date_text(update: Update, context: ContextTypes.DE
         return
 
     context.user_data.pop("waiting_admin_custom_date", None)
+    context.user_data["last_admin_custom_range"] = (parsed["start_date"], parsed["end_date"], parsed["label"])
+
     stats_service = StatisticsService()
+    mapping_service = MappingService.get_instance()
+    await mapping_service.reload_cache()
+    avail_k = mapping_service.get_all_kelompoks()
+    sel_k = context.user_data.get("admin_selected_kelompok", "all")
 
     try:
         stats = await stats_service.calculate_period_admin_stats(
@@ -317,12 +379,13 @@ async def handle_admin_custom_date_text(update: Update, context: ContextTypes.DE
             end_date=parsed["end_date"],
             period_label=parsed["label"],
             tz_name=Config.TIMEZONE,
+            kelompok_filter=sel_k,
         )
         context.user_data["last_admin_stats"] = stats
         context.user_data["last_admin_period_key"] = "custom"
 
         formatted_text = format_admin_stats_text(stats)
-        markup = get_admin_period_keyboard(Config.GOOGLE_SHEET_ID, "custom")
+        markup = get_admin_period_keyboard(Config.GOOGLE_SHEET_ID, "custom", sel_k, avail_k)
         await update.message.reply_text(
             formatted_text, reply_markup=markup, parse_mode="Markdown"
         )
